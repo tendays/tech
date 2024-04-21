@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.joining;
@@ -16,6 +17,7 @@ import static java.util.stream.Collectors.joining;
 public abstract class JavaScript {
 
     public static final Joiner COMMA = Joiner.on(", ");
+    public static JsExpression _null = s -> "null";
 
     public static JsExpression literal(Css.ClassName className) {
         return className.name.toExpression();
@@ -33,6 +35,9 @@ public abstract class JavaScript {
     public static JsExpression literal(long value) {
         return s -> String.valueOf(value);
     }
+    public static JsExpression literal(boolean value) {
+        return s -> String.valueOf(value);
+    }
 
     public static JsStatement _return(JsExpression value) {
         return s -> "return " + value.format(s) + ";";
@@ -43,10 +48,10 @@ public abstract class JavaScript {
     }
 
     public record JsGlobal(String name) implements JsExpression {
-        public String declare(Object initialValue) {
+        public String declare(JsExpression initialValue) {
             return name +" = "+ initialValue +";\n";
         }
-        public JsStatement set(Object newValue) {
+        public JsStatement set(JsExpression newValue) {
             return s -> (name +" = "+ newValue +";\n");
         }
 
@@ -60,8 +65,21 @@ public abstract class JavaScript {
         }
     }
 
+    public record Fun(String name) {
+        public String declare(Supplier<JsFragment> body) {
+            return "function " + name + "() {\n" +
+                    JsStatement.of(body.get())
+                            .format(new Scope()) + "\n" +
+                    "}";
+        }
+
+        public JsExpression invoke() {
+            return s -> name + "()";
+        }
+    }
+
     public record Fun1(String name) {
-        public String declare(Function<JsExpression, ?> body) {
+        public String declare(Function<JsExpression,JsFragment> body) {
             String arg = "a";
             return "function " + name + "(" + arg + ") {\n" +
                     JsStatement.of(body.apply(s -> arg))
@@ -75,7 +93,7 @@ public abstract class JavaScript {
     }
 
     public record Fun2(String name) {
-        public String declare(BiFunction<JsExpression, JsExpression, ?> body) {
+        public String declare(BiFunction<JsExpression, JsExpression, JsFragment> body) {
             String arg1 = "a";
             String arg2 = "b";
             return "function " + name + "(" + arg1 +", "+ arg2 + ") {\n" +
@@ -89,11 +107,10 @@ public abstract class JavaScript {
         }
     }
 
-    public interface JsExpression {
+    public interface JsExpression extends JsFragment {
 
         JsExpression _this = s -> "this";
 
-        String format(Scope s);
         public static JsExpression of(String code) {
             return s -> code;
         }
@@ -154,8 +171,15 @@ public abstract class JavaScript {
             return this.invoke("remove");
         }
 
+        public JsExpression style() {
+            return this.dot("style");
+        }
+
         public JsExpression prepend(JsHtmlElement child) {
             return this.invoke("prepend", child);
+        }
+        public JsStatement setInnerHtml(JsExpression value) {
+            return this.dot("innerHTML").set(value);
         }
 
         @Override
@@ -208,30 +232,30 @@ public abstract class JavaScript {
         }
     }
 
-    public static JsStatement block(Object... statements) {
+    public static JsStatement block(JsFragment... statements) {
         return s -> "{"+ seq(statements).format(s) +"}";
     }
 
-    public static JsStatement seq(Object... statements) {
+    public static JsStatement seq(JsFragment... statements) {
         return seq(Stream.of(statements));
     }
 
-    public static JsStatement seq(List<?> statements) {
+    public static JsStatement seq(List<? extends JsFragment> statements) {
         return seq(statements.stream());
     }
 
-    private static JsStatement seq(Stream<?> statements) {
+    private static JsStatement seq(Stream<? extends JsFragment> statements) {
         return s -> statements
                 .map(JsStatement::of)
                 .map(stm -> stm.format(s))
                 .collect(joining());
     }
 
-    public static <T extends JsExpression> JsStatement let(T value, Function<String, T> newInstance, Function<T, JsStatement> code) {
+    public static <T extends JsExpression, U extends T> JsStatement let(T value, Function<String, U> newInstance, Function<U, JsStatement> code) {
 
         return s -> {
             String var = s.freshVariableName();
-            T instance = newInstance.apply(var);
+            U instance = newInstance.apply(var);
             return "let " + var + " = " + value.format(s) + ";" +
                     code.apply(instance).format(s);
         };
@@ -248,7 +272,7 @@ public abstract class JavaScript {
         return s -> ("() => " + body.format(s));
     }
 
-    public static JsExpression lambda(String varName, Function<JsExpression, ?> body) {
+    public static JsExpression lambda(String varName, Function<JsExpression, ? extends JsFragment> body) {
         Object bodyValue = body.apply(JsExpression.of(varName));
         String signature = "(" + varName + ") => ";
         if (bodyValue instanceof JsStatement stat) {
@@ -264,6 +288,7 @@ public abstract class JavaScript {
         return new JsHtmlElement(s -> "document.getElementById("+ id.format(s) +")");
     }
 
+    /** Return an expression evaluating to the {@code <body>} element. */
     public static JsHtmlElement getBodyElement() {
         return new JsHtmlElement((s -> "document.getElementsByTagName('body')[0]"));
     }
@@ -287,6 +312,10 @@ public abstract class JavaScript {
         return s -> "setTimeout(() => " + body.format(s) +", "+ delay +")";
     }
 
+    public static JsExpression newXMLHttpRequest() {
+        return s -> "new XMLHttpRequest()";
+    }
+
     public static JsHtmlElement createElement(String tag) {
         return new JsHtmlElement(s -> "document.createElement("+ literal(tag).format(s) +")");
     }
@@ -297,13 +326,16 @@ public abstract class JavaScript {
         return new JsHtmlElement(s -> "document.createTextNode("+ contents.toExpression().format(s) +")");
     }
 
-    public static IfBlock _if(JsExpression condition, Object body) {
+    public static IfBlock _if(JsExpression condition, JsFragment body) {
         return new IfBlock(condition, JsStatement.of(body));
     }
 
-    public interface JsStatement {
+    public interface JsFragment {
         String format(Scope s);
-        static JsStatement of(Object obj) {
+    }
+
+    public interface JsStatement extends JsFragment {
+        static JsStatement of(JsFragment obj) {
             if (obj instanceof JsStatement st) {
                 return st;
             } else if (obj instanceof JsExpression expr) {
@@ -331,7 +363,7 @@ public abstract class JavaScript {
             return new IfChain(this, condition, JsStatement.of(body));
         }
 
-        public JsStatement _else(Object body) {
+        public JsStatement _else(JsFragment body) {
             return s -> this.format(s) +" else "+JsStatement.of(body).format(s);
         }
         @Override

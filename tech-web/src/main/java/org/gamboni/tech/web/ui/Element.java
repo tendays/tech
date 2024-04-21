@@ -28,6 +28,9 @@ public class Element implements Html {
         this(name, attributes, Arrays.asList(contents));
     }
 
+    protected IdentifiedElement withId(String id) {
+        return new IdentifiedElement(id, name, attributes, contents);
+    }
 
     public Element(String name, Html... contents) {
         this(name, List.of(), ImmutableList.copyOf(contents));

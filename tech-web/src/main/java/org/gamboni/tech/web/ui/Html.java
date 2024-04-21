@@ -53,6 +53,17 @@ public interface Html {
         };
     }
 
+    /** Fluent interface to create an IdentifiedElement. Usage: {@code setId(id).to(...)}. */
+    static IdentifiedElementBuilder setId(String id) {
+        return new IdentifiedElementBuilder(id);
+    }
+
+    record IdentifiedElementBuilder(String id) {
+        public IdentifiedElement to(Element element) {
+            return element.withId(id);
+        }
+    }
+
     static String quote(String attribute) {
         return '"' + attribute
                 .replace("&", "&amp;")

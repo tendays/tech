@@ -13,7 +13,7 @@ public abstract class AbstractScript implements Resource {
 
     @Override
     public String getUrl() {
-        return CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_HYPHEN, getClass().getSimpleName()) +".js";
+        return "/" + CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_HYPHEN, getClass().getSimpleName()) +".js";
     }
 
     @Override

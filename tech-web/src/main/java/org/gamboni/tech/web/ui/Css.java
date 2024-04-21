@@ -66,20 +66,31 @@ public abstract class Css implements Resource {
                         args[0].toString())
         );
 
-        Property width(String value);
-        Property height(String value);
-        Property _float(String value);
-        Property position(String value);
         Property backgroundColor(String value);
-        Property fontSize(String value);
-        Property fontWeight(String value);
+        Property border(String value);
+        Property borderBottomRightRadius(String value);
         Property color(String value);
         Property content(String value);
-        Property top(String value);
-        Property right(String value);
-        Property borderBottomRightRadius(String value);
-        Property padding(String value);
+        Property cursor(String cursor);
+        Property display(String value);
         Property filter(String value);
+        Property _float(String value);
+        Property fontFamily(String value);
+        Property fontSize(String value);
+        Property fontVariantCaps(String value);
+        Property fontWeight(String value);
+        Property height(String value);
+        Property left(String value);
+        Property margin(String margin);
+        Property marginTop(String value);
+        Property maxWidth(String value);
+        Property overflow(String value);
+        Property padding(String value);
+        Property position(String value);
+        Property right(String value);
+        Property top(String value);
+        Property width(String value);
+        Property zIndex(int value);
     }
 
     /** A css property (Something:something;) */

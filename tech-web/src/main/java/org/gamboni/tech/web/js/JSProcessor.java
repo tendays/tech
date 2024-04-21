@@ -14,7 +14,7 @@ import static javax.tools.Diagnostic.Kind.ERROR;
 import static javax.tools.Diagnostic.Kind.NOTE;
 
 @SupportedAnnotationTypes(
-  "org.gamboni.shopping.server.tech.js.JS")
+  "org.gamboni.tech.web.js.JS")
 @SupportedSourceVersion(RELEASE_17)
 @AutoService(Processor.class)
 public class JSProcessor extends AbstractProcessor {
@@ -86,8 +86,8 @@ public class JSProcessor extends AbstractProcessor {
             try (var out = sourceFile.openWriter()) {
                 out.write("package " + packageName + ";\n" +
                         "\n" +
-                        "import org.gamboni.shopping.server.tech.js.JavaScript;\n" +
-                        "import org.gamboni.shopping.server.tech.js.JavaScript.JsExpression;\n" +
+                        "import " + JavaScript.class.getName() +";\n" +
+                        "import " + JavaScript.JsExpression.class.getName().replace("$", ".") +";\n" +
                         "\n" +
                         "public class " + jsType + " implements JsExpression {\n" +
                         "  private final JsExpression delegate;\n" +
