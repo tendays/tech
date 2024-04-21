@@ -7,6 +7,7 @@ import javax.lang.model.element.*;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static javax.lang.model.SourceVersion.RELEASE_17;
@@ -86,8 +87,10 @@ public class JSProcessor extends AbstractProcessor {
             try (var out = sourceFile.openWriter()) {
                 out.write("package " + packageName + ";\n" +
                         "\n" +
-                        "import " + JavaScript.class.getName() +";\n" +
-                        "import " + JavaScript.JsExpression.class.getName().replace("$", ".") +";\n" +
+                        "import static " + JavaScript.class.getName() +".obj;\n" +
+                        "import " + Map.class.getName() + ";\n" +
+                        "import " + JavaScript.class.getName() + ";\n" +
+                        "import " + JavaScript.JsExpression.class.getName().replace("$", ".") + ";\n" +
                         "\n" +
                         "public class " + jsType + " implements JsExpression {\n" +
                         "  private final JsExpression delegate;\n" +
@@ -106,11 +109,30 @@ public class JSProcessor extends AbstractProcessor {
                         "  }\n");
                 for (var attribute : attributes) {
                     out.write("\n" +
-                            "  public JsExpression " + attribute + "() {" +
-                            "    return this.dot(\"" + attribute + "\");" +
+                            "  public JsExpression " + attribute + "() {\n" +
+                            "    return this.dot(\"" + attribute + "\");\n" +
                             "  }\n"
                     );
                 }
+
+                out.write("  public static JsExpression literal(");
+                String sep = "\n";
+                for (var attribute : attributes) {
+                    out.write(sep + "      JsExpression " + attribute);
+                    sep = ",\n";
+                }
+
+                // TODO support shorthand for small objects, and map builders for large objects.
+                out.write(") {\n" +
+                        "    return obj(Map.of(");
+                sep = "\n";
+                for (var attribute : attributes) {
+                    out.write(sep + "      \"" + attribute + "\", " + attribute);
+                    sep = ",\n";
+                }
+                out.write("));\n" +
+                        "  }\n");
+
                 out.write("}\n");
             }
         } catch (IOException e) {

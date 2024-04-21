@@ -415,6 +415,10 @@ public abstract class JavaScript {
                 "}";
     }
 
+    public static JsExpression obj(String k1, JsExpression v1) {
+        return obj(ImmutableMap.of(k1, v1));
+    }
+
     public static JsExpression obj(String k1, JsExpression v1, String k2, JsExpression v2) {
         return obj(ImmutableMap.of(k1, v1, k2, v2));
     }
