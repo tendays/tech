@@ -26,8 +26,8 @@ public abstract class JavaScript {
     public static JsExpression literal(Enum<?> e) {
         return literal(e.name());
     }
-    public static JsExpression literal(String text) {
-        return JsExpression.of("'" + text.replace("\\", "\\\\")
+    public static JsString literal(String text) {
+        return new JsString(s -> "'" + text.replace("\\", "\\\\")
                 .replace("'", "\\'")
                 + "'");
     }
@@ -49,10 +49,10 @@ public abstract class JavaScript {
 
     public record JsGlobal(String name) implements JsExpression {
         public String declare(JsExpression initialValue) {
-            return name +" = "+ initialValue +";\n";
+            return name +" = "+ initialValue.format(new Scope()) +";\n";
         }
         public JsStatement set(JsExpression newValue) {
-            return s -> (name +" = "+ newValue +";\n");
+            return s -> (name +" = "+ newValue.format(s) +";\n");
         }
 
         public String toString() {
@@ -107,7 +107,35 @@ public abstract class JavaScript {
         }
     }
 
+    public enum Precedence {
+        ATOM, MULTIPLICATION, ADDITION
+    }
+
+    /** A {@link JsExpression} that defaults precedence to ADDITION.
+     * This interface exists to allow the use of lambda for non-atoms.
+     */
+    private interface JsAddition extends JsExpression {
+        @Override
+        default Precedence getPrecedence() {
+            return Precedence.ADDITION;
+        }
+    }
+
+    /** A {@link JsExpression} that defaults precedence to MULTIPLICATION.
+     * This interface exists to allow the use of lambda for non-atoms.
+     */
+    private interface JsMultiplication extends JsExpression {
+        @Override
+        default Precedence getPrecedence() {
+            return Precedence.MULTIPLICATION;
+        }
+    }
+
     public interface JsExpression extends JsFragment {
+
+        default Precedence getPrecedence() {
+            return Precedence.ATOM;
+        }
 
         JsExpression _this = s -> "this";
 
@@ -116,15 +144,44 @@ public abstract class JavaScript {
         }
 
         default JsExpression plus(JsExpression that) {
-            return s -> this.format(s) +"+"+ that.format(s);
+            return (JsAddition) s -> this.format(s) +"+"+ that.format(s);
         }
 
         default JsString plus(String that) {
             return new JsString(this.plus(literal(that)));
         }
 
+        default JsExpression minus(JsExpression that) {
+            // Note rhs must have at most MULTIPLICATION precedence. If we pass an addition/subtraction it needs brackets.
+            // Because x-(y-z) ≠ x-y-z
+
+            // lhs is ADDITION because e.g. (x-y)-z = x-y-z.
+            return (JsAddition) s -> this.format(s, Precedence.ADDITION) +"-"+ that.format(s, Precedence.MULTIPLICATION);
+        }
+
+        default JsExpression times(JsExpression that) {
+            return (JsMultiplication) s -> this.format(s, Precedence.MULTIPLICATION) +"*"+ that.format(s, Precedence.MULTIPLICATION);
+        }
+
+        default JsExpression times(long that) {
+            return this.times(literal(that));
+        }
+        default JsExpression divide(JsExpression that) {
+            // see comment in minus()
+            return (JsMultiplication) s -> this.format(s, Precedence.MULTIPLICATION) +"/"+ that.format(s, Precedence.ATOM);
+        }
+
+        /** Format this, making sure the resulting expression has at most the given target precedence, adding brackets if needed. */
+        default String format(Scope s, Precedence targetPrecedence) {
+            if (this.getPrecedence().compareTo(targetPrecedence) > 0) {
+                return "(" + this.format(s) + ")";
+            } else {
+                return this.format(s);
+            }
+        }
+
         default JsExpression dot(String attr) {
-            return s -> this.format(s) +"."+ attr;
+            return s -> this.format(s, Precedence.ATOM) +"."+ attr;
         }
 
         default JsStatement set(JsExpression newValue) {
@@ -132,7 +189,7 @@ public abstract class JavaScript {
         }
 
         default JsExpression invoke(String method, JsExpression... args) {
-            return s -> this.format(s) +"."+ method +"("+
+            return s -> this.format(s, Precedence.ATOM) +"."+ method +"("+
                     Stream.of(args)
                             .map(arg -> arg.format(s))
                             .collect(joining(", "))+")";
@@ -143,8 +200,7 @@ public abstract class JavaScript {
         }
 
         default JsExpression toLowerCase() {
-            // TODO bracket (this) if needed. e.g. (x+y).toLowerCase() should produce brackets
-            return s -> this.format(s) +".toLowerCase()";
+            return new JsString(this.invoke("toLowerCase"));
         }
 
         default JsExpression and(JsExpression rhs) {
@@ -195,8 +251,13 @@ public abstract class JavaScript {
             this.code = code;
         }
 
+        @Override
+        public Precedence getPrecedence() {
+            return code.getPrecedence();
+        }
+
         public JsString substring(int len) {
-            return new JsString(s -> code.format(s) +".substring("+ len +")");
+            return new JsString(this.invoke("substring", literal(len)));
         }
         @Override
         public String format(Scope s) {
@@ -324,6 +385,10 @@ public abstract class JavaScript {
     }
     public static JsHtmlElement createTextNode(Value<String> contents) {
         return new JsHtmlElement(s -> "document.createTextNode("+ contents.toExpression().format(s) +")");
+    }
+
+    public static JsExpression getTime() {
+        return s -> "new Date().getTime()";
     }
 
     public static IfBlock _if(JsExpression condition, JsFragment body) {
