@@ -33,7 +33,7 @@ public abstract class AbstractPage extends AbstractComponent {
             this.bodyAttributes = bodyAttributes;
         }
 
-        public HtmlElement onLoad(JavaScript.JsExpression code) {
+        public HtmlElement onLoad(JavaScript.JsFragment code) {
             return new HtmlElement(dependencies, body, ImmutableList.<Attribute>builder()
             .addAll(bodyAttributes)
             .add(Html.attribute("onload", code))

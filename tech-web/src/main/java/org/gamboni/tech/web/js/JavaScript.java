@@ -166,6 +166,7 @@ public abstract class JavaScript {
         default JsExpression times(long that) {
             return this.times(literal(that));
         }
+        default JsExpression divide(long that) { return this.divide(literal(that)); }
         default JsExpression divide(JsExpression that) {
             // see comment in minus()
             return (JsMultiplication) s -> this.format(s, Precedence.MULTIPLICATION) +"/"+ that.format(s, Precedence.ATOM);

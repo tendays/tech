@@ -113,7 +113,7 @@ public interface Html {
     }
 
     /** Set an attribute to a Javascript expression (typical for event handlers). */
-    static Attribute attribute(String name, JsExpression expr) {
+    static Attribute attribute(String name, JavaScript.JsFragment expr) {
         return attribute(name, Value.of(expr.format(JavaScript.Scope.NO_DECLARATION)));
     }
 
