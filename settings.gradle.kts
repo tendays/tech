@@ -12,3 +12,4 @@ plugins {
 
 rootProject.name = "tech"
 include("tech-web")
+include("tech-sparkjava")

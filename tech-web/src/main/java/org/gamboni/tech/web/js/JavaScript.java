@@ -199,6 +199,9 @@ public abstract class JavaScript {
         default JsExpression eq(JsExpression value) {
             return s -> this.format(s) +" === "+ value.format(s);
         }
+        default JsExpression eq(Enum<?> value) {
+            return this.eq(literal(value));
+        }
 
         default JsExpression toLowerCase() {
             return new JsString(this.invoke("toLowerCase"));
@@ -206,6 +209,16 @@ public abstract class JavaScript {
 
         default JsExpression and(JsExpression rhs) {
             return s -> this.format(s) + " && " + rhs.format(s);
+        }
+    }
+
+    /** Generates calls to functions in the JavaScript {@code Math} object. */
+    public static class JsMath {
+        public static JsExpression min(JsExpression l, JsExpression r) {
+            return s -> "Math.min(" + l.format(s) +", "+ r.format(s) +")";
+        }
+        public static JsExpression max(JsExpression l, JsExpression r) {
+            return s -> "Math.max(" + l.format(s) +", "+ r.format(s) +")";
         }
     }
 
@@ -325,13 +338,14 @@ public abstract class JavaScript {
         // not working in Quarkus (T)value.getClass().getDeclaredConstructor(String.class).newInstance(var));
     }
 
-    public static JsExpression lambda(JsStatement body) {
-        return s -> ("() => " +
-                // TODO don't add braces if it's already a block (define type)
-                 "{" + body.format(s) +"}");
-    }
-    public static JsExpression lambda(JsExpression body) {
-        return s -> ("() => " + body.format(s));
+    public static JsExpression lambda(JsFragment body) {
+        if (body instanceof JsExpression) {
+            return s -> ("() => " +
+                    "{" + body.format(s) + "}");
+        } else { // JsStatement
+            // TODO add braces if it's a seq() (leverage Precedence mechanism?)
+            return s -> ("() => " + body.format(s));
+        }
     }
 
     public static JsExpression lambda(String varName, Function<JsExpression, ? extends JsFragment> body) {
@@ -370,8 +384,12 @@ public abstract class JavaScript {
         return s -> "console.log("+ expr.format(s) +")";
     }
 
-    public static JsExpression setTimeout(JsExpression body, int delay) {
+    public static JsExpression setTimeout(JsFragment body, int delay) {
         return s -> "setTimeout(() => " + body.format(s) +", "+ delay +")";
+    }
+
+    public static JsExpression clearTimeout(JsExpression body) {
+        return s -> "clearTimeout(" + body.format(s) +")";
     }
 
     public static JsExpression newXMLHttpRequest() {
