@@ -13,13 +13,20 @@ import static org.gamboni.tech.web.js.JavaScript.literal;
  * @author tendays
  */
 public interface Html {
-    static final Html EMPTY = new Html() {
+    Html EMPTY = new EmptyHtml();
+
+    final class EmptyHtml implements Html {
+        private EmptyHtml() {}
         @Override
         public JsStatement javascriptCreate(Function<JsHtmlElement, JsStatement> continuation) {
             return s -> "";
         }
 
         public String toString() { return ""; }
+        public int hashCode() { return 9; }
+        public boolean equals(Object that) {
+            return (that instanceof EmptyHtml);
+        }
     };
 
     static Html escape(String text) {
@@ -30,7 +37,7 @@ public interface Html {
             }
 
             public String toString() {
-                return text.replace("&", "amp;")
+                return text.replace("&", "&amp;")
                         .replace("<", "&lt;")
                         .replace(">", "&gt;");
             }

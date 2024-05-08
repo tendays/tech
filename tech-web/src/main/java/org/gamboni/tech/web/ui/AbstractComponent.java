@@ -1,6 +1,7 @@
 package org.gamboni.tech.web.ui;
 
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Streams;
 import org.gamboni.tech.web.js.JavaScript;
 
 import java.util.List;
@@ -70,10 +71,17 @@ public abstract class AbstractComponent {
                 e -> new Element("li", renderer.apply(e))));
     }
 
-    /** Convert an Iterable to an HTML unnumbered list, applying the given styles to the ul and li elements. */
+    /** Convert an Iterable to an HTML unnumbered list, applying the given styles to the ul and li elements.
+     * The {@code renderer} may return {@link Html#EMPTY} to indicate that an element should be omitted from
+     * the returned list.
+     */
     protected <T> Element ul(Css.ClassName ulStyle, Iterable<T> list, Css.ClassName liStyle, Function<T, Html> renderer) {
-        return new Element("ul", List.of(ulStyle), Iterables.transform(list,
-                e -> new Element("li", List.of(liStyle), renderer.apply(e))));
+        return new Element("ul", List.of(ulStyle),
+                Streams.stream(list)
+                        .map(renderer)
+                        .filter(h -> !h.equals(Html.EMPTY))
+                        .map(h -> new Element("li", List.of(liStyle), h))
+                        .toList());
     }
 
 }
