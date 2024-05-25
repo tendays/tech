@@ -39,7 +39,7 @@ public abstract class JsPersistentWebSocket {
                                 ._else(queue.invoke("push", action))) +
 
                 flushQueue.declare(() -> seq(
-                        socket.invoke("send", jsonStringify( helloValue())),
+                        socket.invoke("send", serialise( helloValue())),
                         let(queue,
                                 JsExpression::of,
                                 queueCopy -> seq(
@@ -137,7 +137,7 @@ public abstract class JsPersistentWebSocket {
 
     /** Convert an expression passed to submit() into an expression to send to the back end. */
     protected JsExpression serialise(JsExpression action) {
-        return action;
+        return jsonStringify(action);
     }
 
     /** Handle a message coming from the server.
