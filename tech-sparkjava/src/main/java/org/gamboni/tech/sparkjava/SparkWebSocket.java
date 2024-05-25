@@ -186,7 +186,7 @@ public abstract class SparkWebSocket {
                         super.declare() +
                         sendKeepAlive.declare(() -> keepAliveHandle.set(
                                 setTimeout(block(
-                                        this.submit(literal(KEEPALIVE_COMMAND)),
+                                        this.submitIfOpen(literal(KEEPALIVE_COMMAND)),
                                         sendKeepAlive.invoke()),
                                         KEEPALIVE_MILLIS)
                         ));

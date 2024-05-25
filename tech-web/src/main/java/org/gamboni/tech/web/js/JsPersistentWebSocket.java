@@ -34,8 +34,7 @@ public abstract class JsPersistentWebSocket {
                 socket.declare(JavaScript._null)  + // should likely immediately call the poll() function
 
                 submit.declare(action ->
-                        _if(socket.dot("readyState").eq(WebSocket.dot("OPEN")),
-                                socket.invoke("send", serialise(action)))
+                        submitIfOpen(serialise(action))
                                 ._else(queue.invoke("push", action))) +
 
                 flushQueue.declare(() -> seq(
@@ -82,6 +81,11 @@ public abstract class JsPersistentWebSocket {
                                         )
                                 ))
                 ));
+    }
+
+    protected IfBlock submitIfOpen(JsExpression payload) {
+        return _if(socket.dot("readyState").eq(WebSocket.dot("OPEN")),
+                socket.invoke("send", payload));
     }
 
     protected JsFragment onOpen() {
