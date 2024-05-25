@@ -51,6 +51,9 @@ public abstract class JavaScript {
         public String declare(JsExpression initialValue) {
             return name +" = "+ initialValue.format(new Scope()) +";\n";
         }
+        public String declare(long initialValue) {
+            return declare(literal(initialValue));
+        }
         public JsStatement set(JsExpression newValue) {
             return s -> (name +" = "+ newValue.format(s) +";\n");
         }
@@ -108,7 +111,27 @@ public abstract class JavaScript {
     }
 
     public enum Precedence {
-        ATOM, MULTIPLICATION, ADDITION
+        ATOM, MULTIPLICATION, ADDITION, CONJUNCTION, DISJUNCTION
+    }
+
+    /** A {@link JsExpression} that defaults precedence to CONJUNCTION.
+     * This interface exists to allow the use of lambda for non-atoms.
+     */
+    private interface JsDisjunction extends JsExpression {
+        @Override
+        default Precedence getPrecedence() {
+            return Precedence.DISJUNCTION;
+        }
+    }
+
+    /** A {@link JsExpression} that defaults precedence to CONJUNCTION.
+     * This interface exists to allow the use of lambda for non-atoms.
+     */
+    private interface JsConjunction extends JsExpression {
+        @Override
+        default Precedence getPrecedence() {
+            return Precedence.CONJUNCTION;
+        }
     }
 
     /** A {@link JsExpression} that defaults precedence to ADDITION.
@@ -138,6 +161,8 @@ public abstract class JavaScript {
         }
 
         JsExpression _this = s -> "this";
+        JsExpression _null = s -> "null";
+        JsExpression _undefined = s -> "undefined";
 
         public static JsExpression of(String code) {
             return s -> code;
@@ -197,7 +222,7 @@ public abstract class JavaScript {
         }
 
         default JsExpression eq(JsExpression value) {
-            return s -> this.format(s) +" === "+ value.format(s);
+            return s -> this.format(s, Precedence.ADDITION) +" === "+ value.format(s, Precedence.ADDITION);
         }
         default JsExpression eq(Enum<?> value) {
             return this.eq(literal(value));
@@ -208,7 +233,11 @@ public abstract class JavaScript {
         }
 
         default JsExpression and(JsExpression rhs) {
-            return s -> this.format(s) + " && " + rhs.format(s);
+            return (JsConjunction) s -> this.format(s, Precedence.CONJUNCTION) + " && " + rhs.format(s, Precedence.CONJUNCTION);
+        }
+
+        default JsExpression or(JsExpression rhs) {
+            return (JsDisjunction) s -> this.format(s) + " || " + rhs.format(s);
         }
     }
 
@@ -297,9 +326,16 @@ public abstract class JavaScript {
         public JsExpression remove(JsExpression item) {
             return this.invoke("remove", item);
         }
+        public JsExpression remove(Css.ClassName item) {
+            return this.remove(literal(item));
+        }
 
         public JsExpression add(JsExpression item) {
             return this.invoke("add", item);
+        }
+
+        public JsExpression add(Css.ClassName item) {
+            return this.add(literal(item));
         }
         @Override
         public String format(Scope s) {
@@ -308,6 +344,9 @@ public abstract class JavaScript {
     }
 
     public static JsStatement block(JsFragment... statements) {
+        return s -> "{"+ seq(statements).format(s) +"}";
+    }
+    public static JsStatement block(List<? extends JsFragment> statements) {
         return s -> "{"+ seq(statements).format(s) +"}";
     }
 
@@ -379,6 +418,9 @@ public abstract class JavaScript {
     public static JsExpression jsonParse(JsExpression text) {
         return s -> "JSON.parse(" + text.format(s) +")";
     }
+    public static JsExpression jsonStringify(JsExpression text) {
+        return s -> "JSON.stringify(" + text.format(s) +")";
+    }
 
     public static JsExpression consoleLog(JsExpression expr) {
         return s -> "console.log("+ expr.format(s) +")";
@@ -414,6 +456,14 @@ public abstract class JavaScript {
         return new IfBlock(condition, JsStatement.of(body));
     }
 
+    public static JsStatement _forOf(JsExpression array, Function<JsExpression, JsFragment> body) {
+        return s -> {
+            String var = s.freshVariableName();
+            return "for (const " + var +" of " + array.format(s) + ") {" +
+                    body.apply(JsExpression.of(var)).format(s) + "}";
+        };
+    }
+
     public interface JsFragment {
         String format(Scope s);
     }
@@ -430,7 +480,33 @@ public abstract class JavaScript {
         }
     }
 
-    public static class IfBlock implements JsStatement {
+    public static final IfLike EMPTY_IF_CHAIN = new IfLike() {
+        @Override
+        public IfBlock _elseIf(JsExpression condition, JsStatement body) {
+            return _if(condition, body);
+        }
+
+        @Override
+        public IfBlock _elseIf(JsExpression condition, JsExpression body) {
+            return _if(condition, body);
+        }
+
+        @Override
+        public JsStatement _else(JsFragment body) {
+            return JsStatement.of(body);
+        }
+    };
+
+    public interface IfLike {
+
+        IfBlock _elseIf(JsExpression condition, JsStatement body);
+
+        IfBlock _elseIf(JsExpression condition, JsExpression body);
+
+        JsStatement _else(JsFragment body);
+    }
+
+    public static class IfBlock implements JsStatement, IfLike {
         private final JsExpression condition;
         private final JsStatement body;
 
@@ -439,14 +515,17 @@ public abstract class JavaScript {
             this.body = body;
         }
 
+        @Override
         public IfChain _elseIf(JsExpression condition, JsStatement body) {
             return new IfChain(this, condition, body);
         }
 
+        @Override
         public IfChain _elseIf(JsExpression condition, JsExpression body) {
             return new IfChain(this, condition, JsStatement.of(body));
         }
 
+        @Override
         public JsStatement _else(JsFragment body) {
             return s -> this.format(s) +" else "+JsStatement.of(body).format(s);
         }

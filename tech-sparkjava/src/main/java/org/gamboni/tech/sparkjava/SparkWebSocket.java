@@ -1,6 +1,7 @@
 package org.gamboni.tech.sparkjava;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Preconditions;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,10 +14,9 @@ import org.gamboni.tech.web.js.JsPersistentWebSocket;
 import spark.Spark;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.gamboni.tech.web.js.JavaScript.*;
 
@@ -29,6 +29,9 @@ public abstract class SparkWebSocket {
     @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
     public class Client {
         private final Session session;
+        /** (Final but contents is mutable) */
+        private final List<Runnable> onClose = new ArrayList<>();
+        private volatile boolean open = true;
 
         /**
          * Send the given payload to this client. If sending fails, throw a {@code RuntimeException}.
@@ -52,6 +55,37 @@ public abstract class SparkWebSocket {
             }
         }
 
+        private void markClosed() {
+            synchronized (this) {
+                Preconditions.checkState(open); // sanity check
+                open = false;
+            }
+
+            for (var task : onClose) {
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    log.warn("Uncaught exception when running close listener", t);
+                }
+            }
+            onClose.clear();
+        }
+
+        /** Run the given task when this client gets closed. If this client is already closed, run the task
+         * immediately, from the current thread, before returning.
+         */
+        public void onClose(Runnable task) {
+            synchronized (this) {
+                if (open) {
+                    onClose.add(task);
+                    return;
+                }
+            }
+
+            // if already closed: no synchronization needed, as we aren't modifying 'this'
+            task.run();
+        }
+
         @Override
         public String toString() {
             return session.toString();
@@ -60,7 +94,7 @@ public abstract class SparkWebSocket {
 
     private final Map<Session, Client> clients = new HashMap<>();
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
     public String getPath() {
         return "/ws";
@@ -68,6 +102,10 @@ public abstract class SparkWebSocket {
 
     public void init() {
         Spark.webSocket(getPath(), this);
+    }
+
+    protected SparkWebSocket(Supplier<ObjectMapper> mapping) {
+        this.mapper = mapping.get();
     }
 
     @OnWebSocketConnect
@@ -91,7 +129,7 @@ public abstract class SparkWebSocket {
 
     @OnWebSocketClose
     public synchronized void onClose(Session session, int statusCode, String reason) {
-        clients.remove(session);
+        clients.remove(session).markClosed();
         log.info("Connection {} terminated: {} {} ", session, statusCode, reason);
     }
 
@@ -109,6 +147,23 @@ public abstract class SparkWebSocket {
         }
     }
 
+    /** Broadcast customised information to all clients (e.g. filtering relevant/visible information to each).
+     *
+     * @param payload a function computing the payload to send to a given client.
+     */
+    protected void broadcast(Function<Client, Object> payload) {
+        Set<Client> clientCopies;
+        synchronized (this) {
+            clientCopies = Set.copyOf(this.clients.values());
+        }
+        log.info("Broadcasting data to {} sessions.", clientCopies.size());
+        for (var client : clientCopies) {
+            if (client.session.isOpen()) {
+                client.sendOrLog(payload.apply(client));
+            }
+        }
+    }
+
     public JsPersistentWebSocket createClient(
             JavaScript.JsExpression hello,
             Function<JavaScript.JsExpression, JavaScript.JsStatement> messageHandler) {
@@ -116,7 +171,7 @@ public abstract class SparkWebSocket {
         JavaScript.Fun sendKeepAlive = new JavaScript.Fun("sendKeepAlive");
         return new JsPersistentWebSocket(getPath()) {
             @Override
-            protected JsExpression helloString() {
+            protected JsExpression helloValue() {
                 return hello;
             }
 

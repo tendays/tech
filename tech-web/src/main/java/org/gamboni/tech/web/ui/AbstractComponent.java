@@ -1,5 +1,6 @@
 package org.gamboni.tech.web.ui;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Streams;
 import org.gamboni.tech.web.js.JavaScript;
@@ -24,23 +25,30 @@ public abstract class AbstractComponent {
     protected Element a(String href, Html... contents) {
         return new Element("a", List.of(attribute("href", href)), contents);
     }
-    protected Element a(Css.ClassName style, String href, Html... contents) {
+    protected Element a(Css.ClassList style, String href, Html... contents) {
         return new Element("a", List.of(
-                attribute("class", style.name),
+                style,
                 attribute("href", href)), contents);
+    }
+    protected Element a(List<? extends Html.Attribute> attributes, String href, Html... contents) {
+        return new Element("a", ImmutableList.<Html.Attribute>builder()
+                .addAll(attributes)
+                .add(attribute("href", href))
+                .build(),
+                contents);
     }
 
     protected Element button(String text, JavaScript.JsExpression onclick) {
         return new Element("button", List.of(attribute("onclick", onclick)), Html.escape(text));
     }
 
-    protected Html img(Css.ClassName style, String src) {
-        return new Tag("img", attribute("class", style.name),
+    protected Html img(Css.ClassList style, String src) {
+        return new Tag("img", style,
                 Html.attribute("src", src));
     }
 
-    protected Html img(Css.ClassName style, Value<String> src) {
-        return new Tag("img", attribute("class", style.name),
+    protected Html img(Css.ClassList style, Value<String> src) {
+        return new Tag("img", style,
                 attribute("src", src));
     }
 
@@ -65,6 +73,14 @@ public abstract class AbstractComponent {
         return new Element("p", attributes, contents);
     }
 
+    protected Element span(Css.ClassList style, Html... contents) {
+        return new Element("span", List.of(style), contents);
+    }
+
+    protected Element span(Iterable<Html.Attribute> attributes, Html... contents) {
+        return new Element("span", attributes, contents);
+    }
+
     /** Convert an Iterable to an HTML unnumbered list. */
     protected <T> Element ul(Iterable<T> list, Function<T, Html> renderer) {
         return new Element("ul", Iterables.transform(list,
@@ -75,7 +91,7 @@ public abstract class AbstractComponent {
      * The {@code renderer} may return {@link Html#EMPTY} to indicate that an element should be omitted from
      * the returned list.
      */
-    protected <T> Element ul(Css.ClassName ulStyle, Iterable<T> list, Css.ClassName liStyle, Function<T, Html> renderer) {
+    protected <T> Element ul(Css.ClassList ulStyle, Iterable<T> list, Css.ClassList liStyle, Function<T, Html> renderer) {
         return new Element("ul", List.of(ulStyle),
                 Streams.stream(list)
                         .map(renderer)

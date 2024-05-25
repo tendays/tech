@@ -1,6 +1,7 @@
 package org.gamboni.tech.web.ui;
 
 import com.google.common.base.CaseFormat;
+import com.google.common.collect.ImmutableList;
 import com.google.common.reflect.Reflection;
 
 import java.lang.reflect.Field;
@@ -66,9 +67,12 @@ public abstract class Css implements Resource {
                         args[0].toString())
         );
 
+        /** Vertical aligment in Flex containers. */
+        Property alignItems(String value);
         Property backgroundColor(String value);
         Property border(String value);
         Property borderBottomRightRadius(String value);
+        Property borderRadius(String value);
         Property color(String value);
         Property content(String value);
         Property cursor(String cursor);
@@ -80,6 +84,8 @@ public abstract class Css implements Resource {
         Property fontVariantCaps(String value);
         Property fontWeight(String value);
         Property height(String value);
+        /** Horizontal alignment in Flex containers. */
+        Property justifyContent(String value);
         Property left(String value);
         Property margin(String margin);
         Property marginTop(String value);
@@ -88,7 +94,9 @@ public abstract class Css implements Resource {
         Property padding(String value);
         Property position(String value);
         Property right(String value);
+        Property textAlign(String value);
         Property top(String value);
+        Property verticalAlign(String value);
         Property width(String value);
         Property zIndex(int value);
     }
@@ -137,13 +145,53 @@ public abstract class Css implements Resource {
             return () -> this.renderSelector() +" "+ that.renderSelector();
         }
 
+        /** "this::after" */
+        default Selector after() {
+            return () -> this.renderSelector() +"::after";
+        }
+
         /** "this::before" */
         default Selector before() {
             return () -> this.renderSelector() +"::before";
         }
     }
 
-    public static class ClassName implements Selector, Html.Attribute {
+    public interface ClassList extends Html.Attribute {
+        @Override default String getAttributeName() {
+            return "class";
+        }
+
+        ClassList and(ClassName that);
+    }
+
+    private static class MultiClass implements ClassList {
+        private final ImmutableList<Value<String>> names;
+
+        private MultiClass(List<Value<String>> names) {
+            this.names = ImmutableList.copyOf(names);
+        }
+
+        @Override
+        public ClassList and(ClassName that) {
+            return new MultiClass(ImmutableList.<Value<String>>builder()
+                    .addAll(this.names)
+                    .add(that.name)
+                    .build());
+        }
+
+        @Override
+        public Value<String> getAttributeValue() {
+            return names
+                    .stream()
+                    .reduce((l, r) ->
+                                    Value.concat(
+                                            Value.concat(l, Value.of(" ")),
+                                    r))
+                    .orElseThrow();
+        }
+    }
+
+    public static class ClassName implements Selector, ClassList {
         public final Value<String> name;
         public ClassName(String name) {
             this.name = Value.of(name);
@@ -162,13 +210,14 @@ public abstract class Css implements Resource {
         }
 
         @Override
-        public String getAttributeName() {
-            return "class";
-        }
-
-        @Override
         public Value<String> getAttributeValue() {
             return name;
+        }
+
+        /** Combine this class name with another one, allowing to set multiple class names on a single element. */
+        @Override
+        public ClassList and(ClassName that) {
+            return new MultiClass(ImmutableList.of(this.name, that.name));
         }
     }
 

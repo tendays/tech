@@ -39,7 +39,7 @@ public abstract class JsPersistentWebSocket {
                                 ._else(queue.invoke("push", action))) +
 
                 flushQueue.declare(() -> seq(
-                        socket.invoke("send", helloString()),
+                        socket.invoke("send", jsonStringify( helloValue())),
                         let(queue,
                                 JsExpression::of,
                                 queueCopy -> seq(
@@ -131,7 +131,9 @@ public abstract class JsPersistentWebSocket {
         return submit.invoke(payload);
     }
 
-    protected abstract JsExpression helloString();
+    /** Expression sent to the back end as soon as a connection is established. It may be any expression, e.g. refer
+     * to some variables to subscribe only to events relevant to the current page. */
+    protected abstract JsExpression helloValue();
 
     /** Convert an expression passed to submit() into an expression to send to the back end. */
     protected JsExpression serialise(JsExpression action) {
