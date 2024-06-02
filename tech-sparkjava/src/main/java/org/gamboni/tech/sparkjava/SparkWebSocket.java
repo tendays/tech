@@ -9,6 +9,7 @@ import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
+import org.gamboni.tech.web.BroadcastTarget;
 import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.js.JsPersistentWebSocket;
 import spark.Spark;
@@ -27,7 +28,7 @@ public abstract class SparkWebSocket {
     public static final String KEEPALIVE_COMMAND = "ping";
 
     @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-    public class Client {
+    public class Client implements BroadcastTarget {
         private final Session session;
         /** (Final but contents is mutable) */
         private final List<Runnable> onClose = new ArrayList<>();
@@ -36,6 +37,7 @@ public abstract class SparkWebSocket {
         /**
          * Send the given payload to this client. If sending fails, throw a {@code RuntimeException}.
          */
+        @Override
         public void sendOrThrow(Object payload) {
             try {
                 session.getRemote().sendString(mapper.writeValueAsString(payload));
@@ -47,6 +49,7 @@ public abstract class SparkWebSocket {
         /**
          * Send the given payload to this client. If sending fails, just log a warning and proceed normally.
          */
+        @Override
         public void sendOrLog(Object payload) {
             try {
                 session.getRemote().sendString(mapper.writeValueAsString(payload));
@@ -74,6 +77,7 @@ public abstract class SparkWebSocket {
         /** Run the given task when this client gets closed. If this client is already closed, run the task
          * immediately, from the current thread, before returning.
          */
+        @Override
         public void onClose(Runnable task) {
             synchronized (this) {
                 if (open) {
@@ -133,7 +137,7 @@ public abstract class SparkWebSocket {
         log.info("Connection {} terminated: {} {} ", session, statusCode, reason);
     }
 
-    protected void broadcast(Object payload) {
+    public void broadcast(Object payload) {
 
         Set<Client> clientCopies;
         synchronized (this) {
@@ -151,7 +155,7 @@ public abstract class SparkWebSocket {
      *
      * @param payload a function computing the payload to send to a given client.
      */
-    protected void broadcast(Function<Client, Object> payload) {
+    public void broadcast(Function<Client, Optional<?>> payload) {
         Set<Client> clientCopies;
         synchronized (this) {
             clientCopies = Set.copyOf(this.clients.values());
@@ -159,7 +163,7 @@ public abstract class SparkWebSocket {
         log.info("Broadcasting data to {} sessions.", clientCopies.size());
         for (var client : clientCopies) {
             if (client.session.isOpen()) {
-                client.sendOrLog(payload.apply(client));
+                payload.apply(client).ifPresent(client::sendOrLog);
             }
         }
     }
