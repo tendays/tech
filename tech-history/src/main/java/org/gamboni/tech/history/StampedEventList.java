@@ -7,5 +7,5 @@ import java.util.Collection;
 @JS
 public record StampedEventList<E>(
         long stamp,
-        Collection<? extends E> updates) {
+        Collection<? extends E> updates) implements Stamped {
 }

@@ -9,6 +9,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+/**
+ *
+ * @param <Q> query object
+ * @param <S> response ("snapshot") object
+ * @param <T> session object
+ * @param <E> event object
+ */
 public abstract class HistoryStore<
         Q,
         S extends Stamped,
@@ -52,7 +59,7 @@ public abstract class HistoryStore<
         }
     }
 
-    protected static class AbstractUpdateSession<E> {
+    public static class AbstractUpdateSession<E> {
         protected final Multimap<BroadcastTarget, E> notifications = HashMultimap.create();
     }
 
