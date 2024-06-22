@@ -1,4 +1,4 @@
-package org.gamboni.tech.web;
+package org.gamboni.tech.web.ws;
 
 public interface BroadcastTarget {
     void sendOrThrow(Object payload);
@@ -6,4 +6,8 @@ public interface BroadcastTarget {
     void sendOrLog(Object payload);
 
     void onClose(Runnable task);
+
+    boolean isOpen();
+
+    void markClosed();
 }

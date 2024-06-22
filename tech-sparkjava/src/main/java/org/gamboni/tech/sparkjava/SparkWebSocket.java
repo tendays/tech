@@ -9,13 +9,16 @@ import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
-import org.gamboni.tech.web.BroadcastTarget;
 import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.js.JsPersistentWebSocket;
+import org.gamboni.tech.web.ws.BroadcastTarget;
+import org.gamboni.tech.web.ws.ClientCollection;
 import spark.Spark;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -58,7 +61,7 @@ public abstract class SparkWebSocket {
             }
         }
 
-        private void markClosed() {
+        public void markClosed() {
             synchronized (this) {
                 Preconditions.checkState(open); // sanity check
                 open = false;
@@ -91,13 +94,17 @@ public abstract class SparkWebSocket {
         }
 
         @Override
+        public boolean isOpen() {
+            return session.isOpen();
+        }
+
+        @Override
         public String toString() {
             return session.toString();
         }
     }
 
-    private final Map<Session, Client> clients = new HashMap<>();
-
+    private final ClientCollection<Session> clients = new ClientCollection<>();
     private final ObjectMapper mapper;
 
     public String getPath() {
@@ -118,7 +125,7 @@ public abstract class SparkWebSocket {
         clients.put(session, new Client(session));
     }
 
-    protected abstract boolean handleMessage(Client client, String message);
+    protected abstract boolean handleMessage(BroadcastTarget client, String message);
 
     @OnWebSocketMessage
     public void onMessage(Session session, String message) throws IOException {
@@ -133,39 +140,20 @@ public abstract class SparkWebSocket {
 
     @OnWebSocketClose
     public synchronized void onClose(Session session, int statusCode, String reason) {
-        clients.remove(session).markClosed();
+        clients.remove(session);
         log.info("Connection {} terminated: {} {} ", session, statusCode, reason);
     }
 
     public void broadcast(Object payload) {
-
-        Set<Client> clientCopies;
-        synchronized (this) {
-            clientCopies = Set.copyOf(this.clients.values());
-        }
-        log.info("Broadcasting {} to {} sessions.", payload, clientCopies.size());
-        for (var client : clientCopies) {
-            if (client.session.isOpen()) {
-                client.sendOrLog(payload);
-            }
-        }
+        clients.broadcast(payload);
     }
 
     /** Broadcast customised information to all clients (e.g. filtering relevant/visible information to each).
      *
      * @param payload a function computing the payload to send to a given client.
      */
-    public void broadcast(Function<Client, Optional<?>> payload) {
-        Set<Client> clientCopies;
-        synchronized (this) {
-            clientCopies = Set.copyOf(this.clients.values());
-        }
-        log.info("Broadcasting data to {} sessions.", clientCopies.size());
-        for (var client : clientCopies) {
-            if (client.session.isOpen()) {
-                payload.apply(client).ifPresent(client::sendOrLog);
-            }
-        }
+    public void broadcast(Function<BroadcastTarget, Optional<?>> payload) {
+        clients.broadcast(payload);
     }
 
     public JsPersistentWebSocket createClient(

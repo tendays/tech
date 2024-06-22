@@ -18,7 +18,7 @@ repositories {
 }
 
 group = "org.gamboni"
-version = "1.0.0-SNAPSHOT"
+version = "0.0.1"
 
 dependencies {
     val lombok = "org.projectlombok:lombok:1.18.30"
@@ -29,7 +29,7 @@ dependencies {
     compileOnly(autoService)
     annotationProcessor(autoService)
     implementation(libs.guava)
-
+    implementation("org.slf4j:slf4j-api:2.0.13")
     // Use JUnit Jupiter for testing.
     testImplementation(libs.junit.jupiter)
 

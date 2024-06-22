@@ -2,7 +2,7 @@ package org.gamboni.tech.history;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
-import org.gamboni.tech.web.BroadcastTarget;
+import org.gamboni.tech.web.ws.BroadcastTarget;
 
 import java.util.Collection;
 import java.util.List;

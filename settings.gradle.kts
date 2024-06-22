@@ -14,3 +14,4 @@ rootProject.name = "tech"
 include("tech-web")
 include("tech-history")
 include("tech-sparkjava")
+include("tech-quarkus")
