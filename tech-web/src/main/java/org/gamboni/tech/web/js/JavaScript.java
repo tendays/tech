@@ -492,14 +492,18 @@ public abstract class JavaScript {
         }
 
         default String formatAsBlock(Scope s) {
-            return (getPrecedence() == StatementPrecedence.BLOCK) ?
-                    format(s) // already a block
-            : ("{" + format(s) + "}");
+            return JavaScript.formatAsBlock(this, this.format(s));
         }
 
         default StatementPrecedence getPrecedence() {
             return StatementPrecedence.BLOCK;
         }
+    }
+
+    private static String formatAsBlock(JsStatement st, String formatted) {
+        return (st.getPrecedence() == StatementPrecedence.BLOCK) ?
+                formatted // already a block
+                : ("{" + formatted + "}");
     }
 
     public interface JsStatementSequence extends JsStatement {
@@ -574,7 +578,7 @@ public abstract class JavaScript {
 
         @Override
         public String format(Scope s) {
-            return previous.format(s) +" else "+ super.formatAsBlock(s);
+            return previous.format(s) +" else "+ JavaScript.formatAsBlock(this, super.format(s));
         }
     }
 
