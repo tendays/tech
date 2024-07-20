@@ -2,6 +2,7 @@ package org.gamboni.tech.history;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
+import lombok.RequiredArgsConstructor;
 import org.gamboni.tech.web.ws.BroadcastTarget;
 
 import java.util.Collection;
@@ -21,15 +22,10 @@ public abstract class HistoryStore<
         S extends Stamped,
         T extends HistoryStore.AbstractUpdateSession<E>,
         E> {
-    /**
-     * Ever-increasing version/generation/stamp number. Every change in play state is associated with a new higher stamp value.
-     * Clients can request changes since a given stamp value.
-     */
-    private volatile long stamp = 0;
 
-    protected long getStamp() {
-        return this.stamp;
-    }
+    /** Return the current stamp value. */
+    protected abstract long getStamp();
+    protected abstract long incrementStamp();
 
     public abstract S getSnapshot(Q query);
 
@@ -59,21 +55,23 @@ public abstract class HistoryStore<
         }
     }
 
+    @RequiredArgsConstructor
     public static class AbstractUpdateSession<E> {
+        protected final long stamp;
         protected final Multimap<BroadcastTarget, E> notifications = HashMultimap.create();
     }
 
-    protected abstract T newTransaction();
+    protected abstract T newTransaction(long stamp);
 
     public synchronized PerClientUpdates update(Consumer<T> work) {
-        stamp++;
-        T session = newTransaction();
+        long stamp = incrementStamp();
+        T session = newTransaction(stamp);
         work.accept(session);
         return new PerClientUpdates(stamp, session.notifications);
     }
 
     public StampedEventList<E> addListener(BroadcastTarget client, Q query, long since) {
-        return new StampedEventList<>(stamp, internalAddListener(client, query, since));
+        return new StampedEventList<>(getStamp(), internalAddListener(client, query, since));
     }
 
     protected abstract List<E> internalAddListener(BroadcastTarget client, Q query, long since);

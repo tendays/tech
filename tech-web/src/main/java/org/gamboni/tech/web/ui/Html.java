@@ -5,6 +5,8 @@ import org.gamboni.tech.web.js.JavaScript.JsExpression;
 import org.gamboni.tech.web.js.JavaScript.JsHtmlElement;
 import org.gamboni.tech.web.js.JavaScript.JsStatement;
 
+import java.util.Iterator;
+import java.util.List;
 import java.util.function.Function;
 
 import static org.gamboni.tech.web.js.JavaScript.literal;
@@ -12,13 +14,13 @@ import static org.gamboni.tech.web.js.JavaScript.literal;
 /**
  * @author tendays
  */
-public interface Html {
+public interface Html extends HtmlFragment {
     Html EMPTY = new EmptyHtml();
 
     final class EmptyHtml implements Html {
         private EmptyHtml() {}
         @Override
-        public JsStatement javascriptCreate(Function<JsHtmlElement, JsStatement> continuation) {
+        public JsStatement javascriptCreate(Function<JsHtmlElement, ? extends JavaScript.JsFragment> continuation) {
             return s -> "";
         }
 
@@ -32,8 +34,8 @@ public interface Html {
     static Html escape(String text) {
         return new Html() {
             @Override
-            public JsStatement javascriptCreate(Function<JsHtmlElement, JsStatement> continuation) {
-                return continuation.apply(JavaScript.createTextNode(text));
+            public JsStatement javascriptCreate(Function<JsHtmlElement, ? extends JavaScript.JsFragment> continuation) {
+                return JsStatement.of(continuation.apply(JavaScript.createTextNode(text)));
             }
 
             public String toString() {
@@ -47,8 +49,8 @@ public interface Html {
     static Html escape(Value<String> text) {
         return new Html() {
             @Override
-            public JsStatement javascriptCreate(Function<JsHtmlElement, JsStatement> continuation) {
-                return continuation.apply(JavaScript.createTextNode(text));
+            public JsStatement javascriptCreate(Function<JsHtmlElement, ? extends JavaScript.JsFragment> continuation) {
+                return JsStatement.of(continuation.apply(JavaScript.createTextNode(text)));
             }
 
             public String toString() {
@@ -58,6 +60,10 @@ public interface Html {
                         .replace(">", "&gt;");
             }
         };
+    }
+
+    default Iterator<Html> iterator() {
+        return List.of(this).iterator();
     }
 
     /** Fluent interface to create an IdentifiedElement. Usage: {@code setId(id).to(...)}. */
@@ -133,7 +139,7 @@ public interface Html {
      * @param continuation what to do with the constructed DOM node (typically, insert it somewhere in the document).
      * @return the JavaScript code constructing this fragment, including continuation code.
      */
-    JsStatement javascriptCreate(Function<JsHtmlElement, JsStatement> continuation);
+    JsStatement javascriptCreate(Function<JsHtmlElement, ? extends JavaScript.JsFragment> continuation);
 
     interface Attribute {
         String getAttributeName();

@@ -72,6 +72,7 @@ public abstract class Css implements Resource {
         Property backgroundColor(String value);
         Property border(String value);
         Property borderBottomRightRadius(String value);
+        Property borderLeft(String value);
         Property borderRadius(String value);
         Property color(String value);
         Property content(String value);
@@ -88,15 +89,21 @@ public abstract class Css implements Resource {
         Property justifyContent(String value);
         Property left(String value);
         Property margin(String margin);
+        Property marginBottom(String value);
         Property marginTop(String value);
+        Property maxHeight(String value);
         Property maxWidth(String value);
+        /** E.g. objectFit("cover") to enlarge images to fit some size. */
+        Property objectFit(String value);
         Property overflow(String value);
         Property padding(String value);
         Property position(String value);
         Property right(String value);
         Property textAlign(String value);
+        Property textDecoration(String value);
         Property top(String value);
         Property verticalAlign(String value);
+        Property whiteSpace(String value);
         Property width(String value);
         Property zIndex(int value);
     }

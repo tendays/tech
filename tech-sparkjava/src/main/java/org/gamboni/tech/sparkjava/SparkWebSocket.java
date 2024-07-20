@@ -177,7 +177,7 @@ public abstract class SparkWebSocket {
                 return keepAliveHandle.declare(_null) +
                         super.declare() +
                         sendKeepAlive.declare(() -> keepAliveHandle.set(
-                                setTimeout(block(
+                                setTimeout(seq(
                                         this.submitIfOpen(literal(KEEPALIVE_COMMAND)),
                                         sendKeepAlive.invoke()),
                                         KEEPALIVE_MILLIS)
@@ -194,10 +194,10 @@ public abstract class SparkWebSocket {
             @Override
             protected JsFragment onClose(JsExpression event) {
                 return seq(
-                        _if(keepAliveHandle, block(
+                        _if(keepAliveHandle,
                                 clearTimeout(keepAliveHandle),
                                 keepAliveHandle.set(_null)
-                        )),
+                        ),
                         super.onClose(event));
             }
         };

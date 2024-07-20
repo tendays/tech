@@ -23,12 +23,13 @@ import java.util.function.Function;
 public abstract class QuarkusWebSocket {
 
     @Inject
-    Vertx vertx;
+    protected Vertx vertx;
 
     @Inject
-    ObjectMapper json;
+    protected ObjectMapper json;
 
     private final ClientCollection<Session>  clients = new ClientCollection<>();
+
 
     @RequiredArgsConstructor
     public class SessionBroadcastTarget implements BroadcastTarget {
@@ -89,6 +90,15 @@ public abstract class QuarkusWebSocket {
             onClose.clear();
         }
 
+        public int hashCode() {
+            return session.hashCode();
+        }
+
+        public boolean equals(Object that) {
+            return (that instanceof SessionBroadcastTarget t) &&
+                    t.session.equals(this.session);
+        }
+
         @Override
         public String toString() {
             return session.toString();
@@ -98,6 +108,7 @@ public abstract class QuarkusWebSocket {
     @OnOpen
     public synchronized void onOpen(Session session) {
         log.debug("New session opened");
+        clients.put(session, new SessionBroadcastTarget(session));
     }
 
     @OnClose

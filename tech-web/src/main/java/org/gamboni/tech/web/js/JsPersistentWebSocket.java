@@ -7,8 +7,13 @@ import static org.gamboni.tech.web.js.JavaScript.*;
 
 @RequiredArgsConstructor(access = PROTECTED)
 public abstract class JsPersistentWebSocket {
+    public static final String DEFAULT_URL = "/sock";
 
     private final String socketUrl;
+
+    protected JsPersistentWebSocket() {
+        this(DEFAULT_URL);
+    }
 
     private static final int POLL_INTERVAL = 60000;
 
@@ -56,13 +61,13 @@ public abstract class JsPersistentWebSocket {
                                         .plus(s -> "window.location.host")
                                         .plus(literal(socketUrl)))),
                         /* If the websocket is already closed, we could not establish the connection, and try again later. */
-                        _if(socket.dot("readyState").eq(WebSocket.dot("CLOSED")), block(
+                        _if(socket.dot("readyState").eq(WebSocket.dot("CLOSED")),
                                 setTimeout(poll.invoke(), POLL_INTERVAL),
                                 _return()
-                        ))._elseIf(socket.dot("readyState").eq(WebSocket.dot("OPEN")),
+                        )._elseIf(socket.dot("readyState").eq(WebSocket.dot("OPEN")),
                                 flushQueue.invoke()),
                         socket.invoke("addEventListener", literal("open"),
-                                lambda(block(this.onOpen()))),
+                                lambda(this.onOpen())),
 
                         socket.invoke("addEventListener", literal("message"),
                                 lambda("event",

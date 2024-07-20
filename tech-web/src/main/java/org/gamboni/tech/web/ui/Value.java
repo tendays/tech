@@ -48,6 +48,10 @@ public interface Value<T> {
         return Constant.of(value, () -> JavaScript.literal(value));
     }
 
+    static Value<Long> of(long value) {
+        return Constant.of(value, () -> JavaScript.literal(value));
+    }
+
     static Value<Css.ClassName> of (Css.ClassName value) {
         return Constant.of(value, () -> JavaScript.literal(value));
     }

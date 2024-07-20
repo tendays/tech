@@ -29,7 +29,7 @@ public class Tag implements Html {
     }
 
     @Override
-    public JavaScript.JsStatement javascriptCreate(Function<JavaScript.JsHtmlElement, JavaScript.JsStatement> continuation) {
+    public JavaScript.JsStatement javascriptCreate(Function<JavaScript.JsHtmlElement, ? extends JavaScript.JsFragment> continuation) {
         return JavaScript.let(JavaScript.createElement(name), JavaScript.JsHtmlElement::new,
                 elt -> {
                     var statements = new ArrayList<JavaScript.JsStatement>();
@@ -37,7 +37,7 @@ public class Tag implements Html {
                         statements.add(attr.javascriptCreate(elt));
                     }
                     statements.add(
-                            continuation.apply(elt));
+                            JavaScript.JsStatement.of(continuation.apply(elt)));
                     return JavaScript.seq(statements);
                 });
     }

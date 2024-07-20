@@ -5,11 +5,14 @@ import com.google.common.collect.ImmutableMap;
 import org.gamboni.tech.web.ui.Css;
 import org.gamboni.tech.web.ui.Value;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collector;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.joining;
@@ -112,6 +115,10 @@ public abstract class JavaScript {
 
     public enum Precedence {
         ATOM, MULTIPLICATION, ADDITION, CONJUNCTION, DISJUNCTION
+    }
+
+    public enum StatementPrecedence {
+        BLOCK, SEQUENCE
     }
 
     /** A {@link JsExpression} that defaults precedence to CONJUNCTION.
@@ -274,6 +281,14 @@ public abstract class JavaScript {
             return this.dot("style");
         }
 
+        public JsHtmlElement parentNode() {
+            return new JsHtmlElement(this.dot("parentNode"));
+        }
+
+        public JsExpression insertBefore(JsHtmlElement newElement, JsHtmlElement sibling) {
+            return this.invoke("insertBefore", newElement, sibling);
+        }
+
         public JsExpression prepend(JsHtmlElement child) {
             return this.invoke("prepend", child);
         }
@@ -343,29 +358,30 @@ public abstract class JavaScript {
         }
     }
 
-    public static JsStatement block(JsFragment... statements) {
-        return s -> "{"+ seq(statements).format(s) +"}";
-    }
-    public static JsStatement block(List<? extends JsFragment> statements) {
-        return s -> "{"+ seq(statements).format(s) +"}";
+    public static JsStatement seq(JsFragment... statements) {
+        return seq(Arrays.asList(statements));
     }
 
-    public static JsStatement seq(JsFragment... statements) {
-        return seq(Stream.of(statements));
+    /** A {@code Stream} collector collecting a stream of fragments into a statement sequence. */
+    public static Collector<JsFragment, ?, JsStatement> toSeq() {
+        return Collector.<JsFragment, List<JsFragment>, JsStatement>of(ArrayList::new,
+                List::add,
+                (left, right) -> { left.addAll(right); return left;},
+                list -> seq(list));
     }
 
     public static JsStatement seq(List<? extends JsFragment> statements) {
-        return seq(statements.stream());
+        if (statements.size() == 1) { // important special case to avoid generating unnecessary braces around single statements
+            return JsStatement.of(statements.get(0));
+        } else {
+            return s -> statements.stream()
+                    .map(JsStatement::of)
+                    .map(stm -> stm.format(s))
+                    .collect(joining());
+        }
     }
 
-    private static JsStatement seq(Stream<? extends JsFragment> statements) {
-        return s -> statements
-                .map(JsStatement::of)
-                .map(stm -> stm.format(s))
-                .collect(joining());
-    }
-
-    public static <T extends JsExpression, U extends T> JsStatement let(T value, Function<String, U> newInstance, Function<U, JsStatement> code) {
+    public static <T extends JsExpression, U extends T> JsStatementSequence let(T value, Function<String, U> newInstance, Function<U, JsStatement> code) {
 
         return s -> {
             String var = s.freshVariableName();
@@ -378,24 +394,20 @@ public abstract class JavaScript {
     }
 
     public static JsExpression lambda(JsFragment body) {
-        if (body instanceof JsExpression) {
-            return s -> ("() => " +
-                    "{" + body.format(s) + "}");
-        } else { // JsStatement
-            // TODO add braces if it's a seq() (leverage Precedence mechanism?)
+        if (body instanceof JsStatement st) {
+            return s -> ("() => " + st.formatAsBlock(s));
+        } else { // JsExpression
             return s -> ("() => " + body.format(s));
         }
     }
 
     public static JsExpression lambda(String varName, Function<JsExpression, ? extends JsFragment> body) {
-        Object bodyValue = body.apply(JsExpression.of(varName));
+        JsFragment bodyValue = body.apply(JsExpression.of(varName));
         String signature = "(" + varName + ") => ";
-        if (bodyValue instanceof JsStatement stat) {
-            return s -> signature + "{" + stat.format(s) + "}";
-        } else if (bodyValue instanceof JsExpression expr) {
-            return s -> signature + expr.format(s);
-        } else {
-            throw new IllegalArgumentException(bodyValue.getClass() +" "+ bodyValue);
+        if (bodyValue instanceof JsStatement st) {
+            return s -> signature + st.formatAsBlock(s);
+        } else { // JsExpression
+            return s -> signature + bodyValue.format(s);
         }
     }
 
@@ -452,15 +464,15 @@ public abstract class JavaScript {
         return s -> "new Date().getTime()";
     }
 
-    public static IfBlock _if(JsExpression condition, JsFragment body) {
-        return new IfBlock(condition, JsStatement.of(body));
+    public static IfBlock _if(JsExpression condition, JsFragment... body) {
+        return new IfBlock(condition, seq(body));
     }
 
     public static JsStatement _forOf(JsExpression array, Function<JsExpression, JsFragment> body) {
         return s -> {
             String var = s.freshVariableName();
-            return "for (const " + var +" of " + array.format(s) + ") {" +
-                    body.apply(JsExpression.of(var)).format(s) + "}";
+            return "for (const " + var +" of " + array.format(s) + ") " +
+                    JsStatement.of(body.apply(JsExpression.of(var))).formatAsBlock(s);
         };
     }
 
@@ -478,32 +490,54 @@ public abstract class JavaScript {
                 throw new IllegalArgumentException(obj.getClass().getName() + " " + obj);
             }
         }
+
+        default String formatAsBlock(Scope s) {
+            return (getPrecedence() == StatementPrecedence.BLOCK) ?
+                    format(s) // already a block
+            : ("{" + format(s) + "}");
+        }
+
+        default StatementPrecedence getPrecedence() {
+            return StatementPrecedence.BLOCK;
+        }
     }
 
+    public interface JsStatementSequence extends JsStatement {
+        @Override
+        default StatementPrecedence getPrecedence() {
+            return StatementPrecedence.SEQUENCE;
+        }
+    }
+
+    /** Trivial/degenerate {@code if}-chain with no condition/code at all. Calling {@link IfLike#_elseIf(JsExpression, JsFragment...)}
+     * will create an {@code if} statement, and calling {@link IfLike#_else(JsFragment...)} will simply emit the
+     * code on its own.
+     */
     public static final IfLike EMPTY_IF_CHAIN = new IfLike() {
         @Override
-        public IfBlock _elseIf(JsExpression condition, JsStatement body) {
+        public IfBlock _elseIf(JsExpression condition, JsFragment... body) {
             return _if(condition, body);
         }
 
         @Override
-        public IfBlock _elseIf(JsExpression condition, JsExpression body) {
-            return _if(condition, body);
-        }
-
-        @Override
-        public JsStatement _else(JsFragment body) {
-            return JsStatement.of(body);
+        public JsStatement _else(JsFragment... body) {
+            return seq(body);
         }
     };
 
     public interface IfLike {
 
-        IfBlock _elseIf(JsExpression condition, JsStatement body);
+        IfBlock _elseIf(JsExpression condition, JsFragment... body);
 
-        IfBlock _elseIf(JsExpression condition, JsExpression body);
+        JsStatement _else(JsFragment... body);
 
-        JsStatement _else(JsFragment body);
+        default IfBlock _elseIf(JsExpression condition, Stream<? extends JsFragment> body) {
+            return _elseIf(condition, body.toArray(JsFragment[]::new));
+        }
+
+        default JsStatement _else(Stream<? extends JsFragment> body) {
+            return _else(body.toArray(JsFragment[]::new));
+        }
     }
 
     public static class IfBlock implements JsStatement, IfLike {
@@ -516,22 +550,17 @@ public abstract class JavaScript {
         }
 
         @Override
-        public IfChain _elseIf(JsExpression condition, JsStatement body) {
-            return new IfChain(this, condition, body);
+        public IfChain _elseIf(JsExpression condition, JsFragment... body) {
+            return new IfChain(this, condition, seq(body));
         }
 
         @Override
-        public IfChain _elseIf(JsExpression condition, JsExpression body) {
-            return new IfChain(this, condition, JsStatement.of(body));
-        }
-
-        @Override
-        public JsStatement _else(JsFragment body) {
-            return s -> this.format(s) +" else "+JsStatement.of(body).format(s);
+        public JsStatement _else(JsFragment... body) {
+            return s -> this.format(s) +" else "+ seq(body).formatAsBlock(s);
         }
         @Override
         public String format(Scope s) {
-            return "if ("+ condition.format(s) +")"+ body.format(s);
+            return "if ("+ condition.format(s) +")"+ body.formatAsBlock(s);
         }
     }
 
@@ -545,7 +574,7 @@ public abstract class JavaScript {
 
         @Override
         public String format(Scope s) {
-            return previous.format(s) +" else "+ super.format(s);
+            return previous.format(s) +" else "+ super.formatAsBlock(s);
         }
     }
 
@@ -557,7 +586,10 @@ public abstract class JavaScript {
      * @param body escaped http body
      * @param callback escaped callback
      * @return code sending the request
+     * @deprecated this is working with stringly-typed statements and would need to be migrated to use {@link JsFragment}
+     *  instead.
      */
+    @Deprecated
     public static String http(String method, String url, Map<String, String> headers, JsExpression body, Function<JsString, String> callback/*, Function<>*/) {
         String var = "x";
         return "let "+ var +" = new XMLHttpRequest();" +
