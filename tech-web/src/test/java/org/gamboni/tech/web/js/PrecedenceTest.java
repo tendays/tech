@@ -1,9 +1,8 @@
 package org.gamboni.tech.web.js;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-import static org.gamboni.tech.web.js.JavaScript.literal;
+import static org.gamboni.tech.web.js.JavaScript.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Verify that brackets are added when needed, and only when needed. */
@@ -35,7 +34,27 @@ public class PrecedenceTest {
         assertFormat("'hello'.substring(2)", literal("hello").substring(2));
     }
 
-    private static void assertFormat(String expected, JavaScript.JsExpression expression) {
+    @Test
+    void testStatementPrecedence() {
+        Fun poll = new Fun("poll");
+        Fun flushQueue = new Fun("flushQueue");
+        JsExpression socket = JsExpression.of("socket");
+        assertFormat("if (socket.readyState === WebSocket.CLOSED){setTimeout(() => poll(), 60000);return;}",
+        _if(socket.dot("readyState").eq(WebSocket.dot("CLOSED")),
+                setTimeout(poll.invoke(), 60_000),
+                _return()
+        ));
+
+        assertFormat("if (socket.readyState === WebSocket.CLOSED){setTimeout(() => poll(), 60000);return;} else if (socket.readyState === WebSocket.OPEN)flushQueue();",
+                _if(socket.dot("readyState").eq(WebSocket.dot("CLOSED")),
+                        setTimeout(poll.invoke(), 60_000),
+                        _return()
+                )
+                ._elseIf(socket.dot("readyState").eq(WebSocket.dot("OPEN")),
+                        flushQueue.invoke()));
+    }
+
+    private static void assertFormat(String expected, JavaScript.JsFragment expression) {
         assertEquals(expected,
                 expression.format(JavaScript.Scope.NO_DECLARATION));
     }

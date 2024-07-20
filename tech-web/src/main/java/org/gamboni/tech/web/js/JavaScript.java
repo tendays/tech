@@ -364,7 +364,8 @@ public abstract class JavaScript {
 
     /** A {@code Stream} collector collecting a stream of fragments into a statement sequence. */
     public static Collector<JsFragment, ?, JsStatement> toSeq() {
-        return Collector.<JsFragment, List<JsFragment>, JsStatement>of(ArrayList::new,
+        return Collector.<JsFragment, List<JsFragment>, JsStatement>of(
+                ArrayList::new,
                 List::add,
                 (left, right) -> { left.addAll(right); return left;},
                 list -> seq(list));
@@ -374,7 +375,7 @@ public abstract class JavaScript {
         if (statements.size() == 1) { // important special case to avoid generating unnecessary braces around single statements
             return JsStatement.of(statements.get(0));
         } else {
-            return s -> statements.stream()
+            return (JsStatementSequence)s -> statements.stream()
                     .map(JsStatement::of)
                     .map(stm -> stm.format(s))
                     .collect(joining());
@@ -439,7 +440,7 @@ public abstract class JavaScript {
     }
 
     public static JsExpression setTimeout(JsFragment body, int delay) {
-        return s -> "setTimeout(() => " + body.format(s) +", "+ delay +")";
+        return s -> "setTimeout(" + lambda(body).format(s) +", "+ delay +")";
     }
 
     public static JsExpression clearTimeout(JsExpression body) {
