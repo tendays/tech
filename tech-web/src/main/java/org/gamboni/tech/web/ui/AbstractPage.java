@@ -10,13 +10,38 @@ import java.util.List;
  * @author tendays
  */
 public abstract class AbstractPage extends AbstractComponent {
+    private final Script script;
 
-    protected AbstractPage() {
+    protected AbstractPage(Script script) {
         super(End.BACK); // pages are always rendered in the back end
+
+        this.script = script;
+    }
+
+    /** Set the base path of this page. It is currently used to construct the script url. */
+    protected void setBasePath(String basePath) {
+        if (!basePath.endsWith("/")) {
+            basePath += "/";
+        }
+
+        script.setUrl(basePath + "script.js");
     }
 
     protected HtmlElement html(Iterable<Resource> dependencies, Iterable<Element> body) {
         return new HtmlElement(dependencies, body, ImmutableList.of());
+    }
+
+    public void addToScript(ScriptMember... members) {
+        for (var member : members) {
+            script.add(member);
+        }
+    }
+
+    /** @apiNote eventually, this will be removed, and render() will be implemented in AbstractPage.java itself.
+     * For now, this must be used as parameter to the {@code html()} call, and you're supposed to know whether your page
+     * actually has scripting elements. */
+    protected Resource getScript() {
+        return script;
     }
 
     protected static class HtmlElement extends Element {

@@ -1,10 +1,11 @@
 package org.gamboni.tech.history;
 
 import org.gamboni.tech.web.js.JsPersistentWebSocket;
+import org.gamboni.tech.web.ui.AbstractPage;
 
 import static org.gamboni.tech.web.js.JavaScript.*;
 
-public abstract class ClientStateHandler {
+public abstract class ClientStateHandler implements JsPersistentWebSocket.Handler {
     /**
      * Latest sequence number obtained from server.
      */
@@ -14,39 +15,30 @@ public abstract class ClientStateHandler {
 
     protected abstract JsExpression helloValue(JsExpression stamp);
 
-    private final JsPersistentWebSocket socket = new JsPersistentWebSocket() {
 
-        @Override
-        protected JsStatement handleEvent(JsExpression message) {
-            return let(
-                    new JsStampedEventList(message),
-                    JsStampedEventList::new,
-                    stampedEventList -> seq(
-                            stamp.set(stampedEventList.stamp()),
-                            _forOf(stampedEventList.updates(),
-                                    item -> applyUpdate(item))
-                    ));
-        }
+    @Override
+    public JsStatement handleEvent(JsExpression message) {
+        return let(
+                new JsStampedEventList(message),
+                JsStampedEventList::new,
+                stampedEventList -> seq(
+                        stamp.set(stampedEventList.stamp()),
+                        _forOf(stampedEventList.updates(),
+                                item -> applyUpdate(item))
+                ));
+    }
 
-        @Override
-        protected JsExpression helloValue() {
-            return ClientStateHandler.this.helloValue(stamp);
-        }
+    @Override
+    public JsExpression helloValue() {
+        return ClientStateHandler.this.helloValue(stamp);
+    }
 
-    };
-
-    public String declare() {
-        return stamp.declare(0) + // initialised by init()?
-            socket.declare();
+    @Override
+    public void addTo(AbstractPage page) {
+        page.addToScript(stamp.declare(0)); // initialised by init()?
     }
 
     public JsStatement init(JsExpression stampValue) {
-        return seq(
-                stamp.set(stampValue),
-                socket.poll());
-    }
-
-    public JsExpression submit(JsExpression payload) {
-        return socket.submit(payload);
+        return stamp.set(stampValue);
     }
 }

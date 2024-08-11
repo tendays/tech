@@ -19,6 +19,7 @@ dependencies {
     annotationProcessor(project(":tech-web"))
 
     implementation("io.quarkus:quarkus-websockets:3.5.0")
+    implementation("io.quarkus:quarkus-resteasy-reactive:3.5.0")
 
     compileOnly(lombok)
     annotationProcessor(lombok)

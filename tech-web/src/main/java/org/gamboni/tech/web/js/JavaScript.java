@@ -3,6 +3,7 @@ package org.gamboni.tech.web.js;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableMap;
 import org.gamboni.tech.web.ui.Css;
+import org.gamboni.tech.web.ui.ScriptMember;
 import org.gamboni.tech.web.ui.Value;
 
 import java.util.ArrayList;
@@ -11,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
 
@@ -51,10 +51,10 @@ public abstract class JavaScript {
     }
 
     public record JsGlobal(String name) implements JsExpression {
-        public String declare(JsExpression initialValue) {
-            return name +" = "+ initialValue.format(new Scope()) +";\n";
+        public ScriptMember declare(JsExpression initialValue) {
+            return () -> name +" = "+ initialValue.format(new Scope()) +";\n";
         }
-        public String declare(long initialValue) {
+        public ScriptMember declare(long initialValue) {
             return declare(literal(initialValue));
         }
         public JsStatement set(JsExpression newValue) {
@@ -72,9 +72,9 @@ public abstract class JavaScript {
     }
 
     public record Fun(String name) {
-        public String declare(Supplier<JsFragment> body) {
-            return "function " + name + "() {\n" +
-                    JsStatement.of(body.get())
+        public ScriptMember declare(JsFragment body) {
+            return () -> "function " + name + "() {\n" +
+                    JsStatement.of(body)
                             .format(new Scope()) + "\n" +
                     "}";
         }
@@ -85,9 +85,9 @@ public abstract class JavaScript {
     }
 
     public record Fun1(String name) {
-        public String declare(Function<JsExpression,JsFragment> body) {
+        public ScriptMember declare(Function<JsExpression,JsFragment> body) {
             String arg = "a";
-            return "function " + name + "(" + arg + ") {\n" +
+            return () -> "function " + name + "(" + arg + ") {\n" +
                     JsStatement.of(body.apply(s -> arg))
                             .format(new Scope()) + "\n" +
                     "}";
@@ -99,10 +99,10 @@ public abstract class JavaScript {
     }
 
     public record Fun2(String name) {
-        public String declare(BiFunction<JsExpression, JsExpression, JsFragment> body) {
+        public ScriptMember declare(BiFunction<JsExpression, JsExpression, JsFragment> body) {
             String arg1 = "a";
             String arg2 = "b";
-            return "function " + name + "(" + arg1 +", "+ arg2 + ") {\n" +
+            return () -> "function " + name + "(" + arg1 +", "+ arg2 + ") {\n" +
                     JsStatement.of(body.apply(JsExpression.of(arg1), JsExpression.of(arg2)))
                             .format(new Scope())+ "\n" +
                     "}";
@@ -396,7 +396,9 @@ public abstract class JavaScript {
 
     public static JsExpression lambda(JsFragment body) {
         if (body instanceof JsStatement st) {
-            return s -> ("() => " + st.formatAsBlock(s));
+            // always put braces. For instance if statements do not generate blocks
+            // when called with formatAsBlock but braces are needed for a lambda...
+            return s -> ("() => {" + st.format(s) +"}");
         } else { // JsExpression
             return s -> ("() => " + body.format(s));
         }

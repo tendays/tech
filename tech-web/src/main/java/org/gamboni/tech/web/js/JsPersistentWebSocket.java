@@ -1,18 +1,43 @@
 package org.gamboni.tech.web.js;
 
 import lombok.RequiredArgsConstructor;
+import org.gamboni.tech.web.ui.AbstractPage;
+import org.gamboni.tech.web.ui.PageMember;
 
 import static lombok.AccessLevel.PROTECTED;
 import static org.gamboni.tech.web.js.JavaScript.*;
 
 @RequiredArgsConstructor(access = PROTECTED)
-public abstract class JsPersistentWebSocket {
+public class JsPersistentWebSocket implements PageMember {
+
+    public interface Handler extends PageMember {
+        /** This method may be overridden to declare any functions or globals needed by this handler.
+         * Default implementation does nothing. */
+        @Override
+        default void addTo(AbstractPage page) {
+        }
+
+        /** Expression sent to the back end as soon as a connection is established. It may be any expression, e.g. refer
+         * to some variables to subscribe only to events relevant to the current page. */
+        JsExpression helloValue();
+        /** Handle a message coming from the server.
+         *
+         * @param message an expression holding the JavaScript object corresponding to the server-sent
+         *                object. You should typically pass it to the constructor of a {@link JS @JS}-annotated
+         *                object to access properties of the object in a type-safe way.
+         * @return the event-handling code, for instance a {@link JavaScript#seq(JsFragment...)} invocation if
+         * you need to do many things in sequence.
+         */
+        JsStatement handleEvent(JsExpression message);
+    }
+
     public static final String DEFAULT_URL = "/sock";
 
     private final String socketUrl;
+    private final Handler handler;
 
-    protected JsPersistentWebSocket() {
-        this(DEFAULT_URL);
+    public JsPersistentWebSocket(Handler handler) {
+        this(DEFAULT_URL, handler);
     }
 
     private static final int POLL_INTERVAL = 60000;
@@ -32,18 +57,16 @@ public abstract class JsPersistentWebSocket {
 
     /** Generate necessary machinery for the persistent websocket. This should be inserted into a script executed
      * at page load.
-     * @return Javascript code
      */
-    public String declare() {
-        return queue.declare(JavaScript.array()) +
-                socket.declare(JavaScript._null)  + // should likely immediately call the poll() function
-
+    @Override
+    public void addTo(AbstractPage page) {
+        page.addToScript(queue.declare(JavaScript.array()),
+                socket.declare(JavaScript._null), // should likely immediately call the poll() function
                 submit.declare(action ->
                         submitIfOpen(serialise(action))
-                                ._else(queue.invoke("push", action))) +
-
-                flushQueue.declare(() -> seq(
-                        socket.invoke("send", serialise( helloValue())),
+                                ._else(queue.invoke("push", action))),
+                flushQueue.declare(seq(
+                        socket.invoke("send", serialise(handler.helloValue())),
                         let(queue,
                                 JsExpression::of,
                                 queueCopy -> seq(
@@ -53,9 +76,8 @@ public abstract class JsPersistentWebSocket {
                                                 submit::invoke
                                         ))
                                 )
-                        ))) +
-
-                poll.declare(() -> seq(
+                        ))),
+                poll.declare(seq(
                         socket.set(newWebSocket(
                                 new JsString(s -> "((window.location.protocol === 'https:') ? 'wss://' : 'ws://')")
                                         .plus(s -> "window.location.host")
@@ -85,7 +107,9 @@ public abstract class JsPersistentWebSocket {
                                                 )
                                         )
                                 ))
-                ));
+                )));
+
+        handler.addTo(page);
     }
 
     protected IfBlock submitIfOpen(JsExpression payload) {
@@ -98,10 +122,10 @@ public abstract class JsPersistentWebSocket {
     }
 
     /** Return the OnMessage event handler. Note: this method receives a raw OnMessage event
-     * and delegates to {@link #handleEvent}. You should normally override handleEvent which
+     * and delegates to {@link Handler#handleEvent}. You should normally override handleEvent which
      * handles the payload object. */
     protected JsFragment onMessage(JsExpression event) {
-        return handleEvent(jsonParse(event.dot("data")));
+        return handler.handleEvent(jsonParse(event.dot("data")));
     }
 
     /** Socket close event handling logic.
@@ -140,23 +164,10 @@ public abstract class JsPersistentWebSocket {
         return submit.invoke(payload);
     }
 
-    /** Expression sent to the back end as soon as a connection is established. It may be any expression, e.g. refer
-     * to some variables to subscribe only to events relevant to the current page. */
-    protected abstract JsExpression helloValue();
-
     /** Convert an expression passed to submit() into an expression to send to the back end. */
     protected JsExpression serialise(JsExpression action) {
         return jsonStringify(action);
     }
 
-    /** Handle a message coming from the server.
-     *
-     * @param message an expression holding the JavaScript object corresponding to the server-sent
-     *                object. You should typically pass it to the constructor of a {@link JS @JS}-annotated
-     *                object to access properties of the object in a type-safe way.
-     * @return the event-handling code, for instance a {@link JavaScript#seq(JsFragment...)} invocation if
-     * you need to do many things in sequence.
-     */
-    protected abstract JsStatement handleEvent(JsExpression message);
 }
 

@@ -11,6 +11,7 @@ import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
 import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.js.JsPersistentWebSocket;
+import org.gamboni.tech.web.ui.AbstractPage;
 import org.gamboni.tech.web.ws.BroadcastTarget;
 import org.gamboni.tech.web.ws.ClientCollection;
 import spark.Spark;
@@ -108,7 +109,7 @@ public abstract class SparkWebSocket {
     private final ObjectMapper mapper;
 
     public String getPath() {
-        return "/ws";
+        return JsPersistentWebSocket.DEFAULT_URL;
     }
 
     public void init() {
@@ -156,32 +157,24 @@ public abstract class SparkWebSocket {
         clients.broadcast(payload);
     }
 
-    public JsPersistentWebSocket createClient(
-            JavaScript.JsExpression hello,
-            Function<JavaScript.JsExpression, JavaScript.JsStatement> messageHandler) {
+    public <T> JsPersistentWebSocket createClient(
+            JsPersistentWebSocket.Handler handler) {
         JavaScript.JsGlobal keepAliveHandle = new JavaScript.JsGlobal("keepAliveHandle");
         JavaScript.Fun sendKeepAlive = new JavaScript.Fun("sendKeepAlive");
-        return new JsPersistentWebSocket(getPath()) {
-            @Override
-            protected JsExpression helloValue() {
-                return hello;
-            }
+        return new JsPersistentWebSocket(getPath(), handler) {
 
             @Override
-            protected JsStatement handleEvent(JsExpression message) {
-                return messageHandler.apply(message);
-            }
-
-            @Override
-            public String declare() {
-                return keepAliveHandle.declare(_null) +
-                        super.declare() +
-                        sendKeepAlive.declare(() -> keepAliveHandle.set(
+            public void addTo(AbstractPage page) {
+                page.addToScript(
+                        keepAliveHandle.declare(_null),
+                        sendKeepAlive.declare(keepAliveHandle.set(
                                 setTimeout(seq(
-                                        this.submitIfOpen(literal(KEEPALIVE_COMMAND)),
-                                        sendKeepAlive.invoke()),
+                                                this.submitIfOpen(literal(KEEPALIVE_COMMAND)),
+                                                sendKeepAlive.invoke()),
                                         KEEPALIVE_MILLIS)
-                        ));
+                        )));
+
+                super.addTo(page);
             }
 
             @Override
