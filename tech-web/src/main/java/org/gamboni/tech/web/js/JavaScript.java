@@ -408,7 +408,7 @@ public abstract class JavaScript {
         JsFragment bodyValue = body.apply(JsExpression.of(varName));
         String signature = "(" + varName + ") => ";
         if (bodyValue instanceof JsStatement st) {
-            return s -> signature + st.formatAsBlock(s);
+            return s -> signature + "{" + st.format(s) +"}";
         } else { // JsExpression
             return s -> signature + bodyValue.format(s);
         }
