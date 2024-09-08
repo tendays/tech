@@ -6,7 +6,7 @@ import jakarta.ws.rs.Produces;
 import org.gamboni.tech.web.ui.AbstractPage;
 import org.gamboni.tech.web.ui.Script;
 
-public abstract class QuarkusPage extends AbstractPage {
+public abstract class QuarkusPage<T> extends AbstractPage<T> {
 
     protected QuarkusPage() {
         super(new Script());

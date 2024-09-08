@@ -24,6 +24,10 @@ public class Script implements Resource {
         this.members.add(member);
     }
 
+    public boolean isEmpty() {
+        return members.isEmpty();
+    }
+
     @Override
     public String render() {
         return members

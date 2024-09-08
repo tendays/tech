@@ -8,13 +8,13 @@ import static lombok.AccessLevel.PROTECTED;
 import static org.gamboni.tech.web.js.JavaScript.*;
 
 @RequiredArgsConstructor(access = PROTECTED)
-public class JsPersistentWebSocket implements PageMember {
+public class JsPersistentWebSocket implements PageMember<Object> {
 
-    public interface Handler extends PageMember {
+    public interface Handler extends PageMember<Object> {
         /** This method may be overridden to declare any functions or globals needed by this handler.
          * Default implementation does nothing. */
         @Override
-        default void addTo(AbstractPage page) {
+        default void addTo(AbstractPage<?> page) {
         }
 
         /** Expression sent to the back end as soon as a connection is established. It may be any expression, e.g. refer
@@ -59,7 +59,7 @@ public class JsPersistentWebSocket implements PageMember {
      * at page load.
      */
     @Override
-    public void addTo(AbstractPage page) {
+    public void addTo(AbstractPage<?> page) {
         page.addToScript(queue.declare(JavaScript.array()),
                 socket.declare(JavaScript._null), // should likely immediately call the poll() function
                 submit.declare(action ->

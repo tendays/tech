@@ -2,19 +2,46 @@ package org.gamboni.tech.web.ui;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Maps;
 import org.gamboni.tech.web.js.JavaScript;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+import static org.gamboni.tech.web.js.JavaScript.seq;
 
 /**
+ * @param <T> the data needed to render the page
  * @author tendays
  */
-public abstract class AbstractPage extends AbstractComponent {
+public abstract class AbstractPage<T> extends AbstractComponent implements Renderer<T> {
     private final Script script;
 
-    protected AbstractPage(Script script) {
-        super(End.BACK); // pages are always rendered in the back end
+    private final JavaScript.FunN onLoad = new JavaScript.FunN("onLoad");
+    private final Map<String, Function<T, JavaScript.JsExpression>> onLoadParameters = new HashMap<>();
+    private final List<JavaScript.JsFragment> loadBody = new ArrayList<>();
 
+    public interface OnLoad<T> {
+        JavaScript.JsExpression addParameter(Function<T, JavaScript.JsExpression> value);
+
+    }
+
+    public void addToOnLoad(Function<OnLoad<T>, JavaScript.JsFragment> code) {
+        if (loadBody.isEmpty()) {
+            // first time we add something to onLoad, we generate the function declaration
+            addToScript(onLoad.declare(__ -> seq(loadBody)));
+        }
+        loadBody.add(code.apply(paramValue -> {
+            var paramName = onLoad.addParameter();
+            onLoadParameters.put(paramName, paramValue);
+            return JavaScript.JsExpression.of(paramName);
+        }));
+    }
+
+    protected AbstractPage(Script script) {
         this.script = script;
     }
 
@@ -27,8 +54,24 @@ public abstract class AbstractPage extends AbstractComponent {
         script.setUrl(basePath + "script.js");
     }
 
-    protected HtmlElement html(Iterable<Resource> dependencies, Iterable<Element> body) {
-        return new HtmlElement(dependencies, body, ImmutableList.of());
+    protected HtmlElement html(T data, Iterable<Resource> dependencies, Iterable<Element> body) {
+        Iterable<Resource> actualDependencies;
+        if (script.isEmpty()) {
+            actualDependencies = dependencies;
+        } else {
+            actualDependencies = Iterables.concat(dependencies,
+                    List.of(getScript()));
+        }
+
+        var html = new HtmlElement(actualDependencies, body, ImmutableList.of());
+
+        if (loadBody.isEmpty()) {
+            return html;
+        } else {
+            return html
+                    .onLoad(onLoad.invoke(Maps.transformValues(onLoadParameters,
+                            fun -> fun.apply(data))));
+        }
     }
 
     public void addToScript(ScriptMember... members) {

@@ -51,7 +51,9 @@ public class JSProcessor extends AbstractProcessor {
                                 subtypes.put(ifaceName, e.getQualifiedName().toString());
                             });
                         }
+
                         emitTypes(e.getQualifiedName().toString(),
+                                isPolymorphic(e),
                                 e.getRecordComponents());
 
                         return null;
@@ -63,21 +65,48 @@ public class JSProcessor extends AbstractProcessor {
         return true;
     }
 
-    private static Optional<String> getFullyQualifiedName(TypeMirror typeMirror) {
-        return typeMirror.accept(new SimpleTypeVisitor14<>(){
-            @Override
-            public Optional<String> visitDeclared(DeclaredType t, Optional<Object> o) {
-                return t.asElement().accept(new SimpleElementVisitor14<>(){
-                    @Override
-                    public Optional<String> visitType(TypeElement e, Optional<Object> o) {
-                        return Optional.of(e.getQualifiedName().toString());
-                    }
-                }, Optional.empty());
-            }
-        }, Optional.empty());
+    /** Whether the given type is part of a Jackson type hierarchy. Currently only supports types
+     * directly implementing an interface annotated with {@code @JsonSubTypes}. Doesn't even check
+     * that {@code type} is listed in the subtypes of the super-interface.
+     * @param type type to check
+     * @return true if {@code type} is part of a Jackson type hierarchy, and therefore should carry
+     * a {@code @type} attribute with the type's simple name (other metadata formats are not supported.)
+     */
+    private static boolean isPolymorphic(TypeElement type) {
+        return type.getInterfaces()
+                .stream()
+                .flatMap(iface -> asTypeElement(iface).stream())
+                .anyMatch(iface -> iface.getAnnotationMirrors()
+                .stream()
+                .anyMatch(ann -> getFullyQualifiedName(ann.getAnnotationType())
+                        .map(n -> n
+                        .equals("com.fasterxml.jackson.annotation.JsonSubTypes"))
+                        .orElse(false)));
     }
 
-    private void emitTypes(String javaType, List<? extends RecordComponentElement> recordComponents) {
+    private static Optional<String> getFullyQualifiedName(TypeMirror typeMirror) {
+        return asTypeElement(typeMirror).map(t -> t.getQualifiedName().toString());
+    }
+
+    private static Optional<TypeElement> asTypeElement(TypeMirror type) {
+        return getDeclaredType(type).flatMap(t -> t.asElement().accept(new SimpleElementVisitor14<>(Optional.empty()) {
+            @Override
+            public Optional<TypeElement> visitType(TypeElement e, Object __) {
+                return Optional.of(e);
+            }
+        }, null));
+    }
+
+    private static Optional<DeclaredType> getDeclaredType(TypeMirror type) {
+        return type.accept(new SimpleTypeVisitor14<>(Optional.empty()) {
+            @Override
+            public Optional<DeclaredType> visitDeclared(DeclaredType t, Object __) {
+                return Optional.of(t);
+            }
+        }, null);
+    }
+
+    private void emitTypes(String javaType, boolean includeTypeName, List<? extends RecordComponentElement> recordComponents) {
         emitFile(n -> "Js" + n, javaType, (out, recordType, jsType) -> {
             out.write(
             "import static " + JavaScript.class.getName() +".obj;\n" +
@@ -119,6 +148,10 @@ public class JSProcessor extends AbstractProcessor {
             out.write(") {\n" +
                     "    return obj(Map.of(");
             sep = "\n";
+            if (includeTypeName) {
+                out.write(sep + "      \"@type\", JavaScript.literal(\"" + javaType.substring(javaType.lastIndexOf('.')+1) +"\")");
+                sep = ",\n";
+            }
             for (var attribute : recordComponents) {
                 out.write(sep + "      \"" + attribute.getSimpleName() + "\", " + attribute.getSimpleName());
                 sep = ",\n";

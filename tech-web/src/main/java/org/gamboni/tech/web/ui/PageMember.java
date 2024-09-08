@@ -1,5 +1,5 @@
 package org.gamboni.tech.web.ui;
 
-public interface PageMember {
-    void addTo(AbstractPage page);
+public interface PageMember<T> {
+    void addTo(AbstractPage<? extends T> page);
 }

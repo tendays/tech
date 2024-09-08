@@ -1,7 +1,9 @@
 package org.gamboni.tech.web.js;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import lombok.RequiredArgsConstructor;
 import org.gamboni.tech.web.ui.Css;
 import org.gamboni.tech.web.ui.ScriptMember;
 import org.gamboni.tech.web.ui.Value;
@@ -13,6 +15,7 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collector;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.joining;
@@ -22,8 +25,8 @@ public abstract class JavaScript {
     public static final Joiner COMMA = Joiner.on(", ");
     public static JsExpression _null = s -> "null";
 
-    public static JsExpression literal(Css.ClassName className) {
-        return className.name.toExpression();
+    public static JsExpression literal(Css.ClassList className) {
+        return className.getAttributeValue().toExpression();
     }
 
     public static JsExpression literal(Enum<?> e) {
@@ -110,6 +113,36 @@ public abstract class JavaScript {
 
         public JsExpression invoke(JsExpression value1, JsExpression value2) {
             return s -> name + "(" + value1.format(s) +", "+ value2 .format(s)+ ")";
+        }
+    }
+
+    @RequiredArgsConstructor
+    public static class FunN {
+        private final String name;
+        private final List<String> parameters = new ArrayList<>();
+        public String addParameter() {
+            String parameter = "p" + (parameters.size());
+            this.parameters.add(parameter);
+            return parameter;
+        }
+        public ScriptMember declare(Function<Map<String, JsExpression>, JsFragment> body) {
+            return () -> {
+                // to support adding parameters after declaration, create the map at actual render time.
+                Map<String, JsExpression> paramMap = parameters.stream()
+                        .collect(Collectors.toMap(varName -> varName, JsExpression::of));
+                return "function " + name + "(" +
+                    String.join(", ", parameters) + ") {\n" +
+                    JsStatement.of(body.apply(paramMap))
+                            .format(new Scope())+ "\n" +
+                    "}";};
+        }
+
+        public JsExpression invoke(Map<String, JsExpression> paramValues) {
+            return s -> name + "(" +
+                    parameters.stream().map(paramValues::get)
+                            .peek(Preconditions::checkNotNull)
+                            .map(expr -> expr.format(s))
+                            .collect(joining(", ")) + ")";
         }
     }
 
@@ -289,11 +322,20 @@ public abstract class JavaScript {
             return this.invoke("insertBefore", newElement, sibling);
         }
 
+        /** inserts a new child at the end. This calls {@code insertBefore()} with {@code null} as
+         * second parameter */
+        public JsExpression insertToEnd(JsHtmlElement newElement) {
+            return this.invoke("insertBefore", newElement, _null);
+        }
+
         public JsExpression prepend(JsHtmlElement child) {
             return this.invoke("prepend", child);
         }
         public JsStatement setInnerHtml(JsExpression value) {
             return this.dot("innerHTML").set(value);
+        }
+        public JsStatement setInnerText(JsExpression value) {
+            return this.dot("innerText").set(value);
         }
 
         @Override
@@ -522,6 +564,11 @@ public abstract class JavaScript {
      */
     public static final IfLike EMPTY_IF_CHAIN = new IfLike() {
         @Override
+        public String format(Scope s) {
+            return "";
+        }
+
+        @Override
         public IfBlock _elseIf(JsExpression condition, JsFragment... body) {
             return _if(condition, body);
         }
@@ -532,7 +579,7 @@ public abstract class JavaScript {
         }
     };
 
-    public interface IfLike {
+    public interface IfLike extends JsStatement {
 
         IfBlock _elseIf(JsExpression condition, JsFragment... body);
 

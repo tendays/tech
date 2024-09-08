@@ -13,14 +13,7 @@ import static org.gamboni.tech.web.ui.Html.attribute;
 
 public abstract class AbstractComponent {
 
-    public enum End {
-        FRONT, BACK
-    }
-
-    protected final End end;
-
-    protected AbstractComponent(End end) {
-        this.end = end;
+    protected AbstractComponent() {
     }
 
     protected static Element a(String href, HtmlFragment... contents) {

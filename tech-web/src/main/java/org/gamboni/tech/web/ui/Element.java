@@ -26,6 +26,23 @@ public class Element implements Html {
                 .toList();
     }
 
+    public Iterable<? extends Attribute> getAttributes() {
+        return attributes;
+    }
+
+    public Iterable<? extends HtmlFragment> getContents() {
+        return contents;
+    }
+
+    /** Return a new element with the same name and contents as this one but where attributes are replaced by the given ones. */
+    public Element withAttributes(Iterable<? extends Attribute> newAttributes) {
+        return new Element(this.name, newAttributes, this.contents);
+    }
+
+    public Element withContents(Iterable<? extends HtmlFragment> newContents) {
+        return new Element(this.name, this.attributes, newContents);
+    }
+
     public Element(String name, Iterable<? extends Attribute> attributes, HtmlFragment... contents) {
         this(name, attributes, Arrays.asList(contents));
     }

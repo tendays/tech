@@ -164,7 +164,7 @@ public abstract class SparkWebSocket {
         return new JsPersistentWebSocket(getPath(), handler) {
 
             @Override
-            public void addTo(AbstractPage page) {
+            public void addTo(AbstractPage<?> page) {
                 page.addToScript(
                         keepAliveHandle.declare(_null),
                         sendKeepAlive.declare(keepAliveHandle.set(
