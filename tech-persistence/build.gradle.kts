@@ -10,7 +10,7 @@ repositories {
 }
 
 group = "org.gamboni"
-version = "0.0.2-SNAPSHOT"
+version = "0.0.3-SNAPSHOT"
 
 dependencies {
     api(project(":tech-history"))

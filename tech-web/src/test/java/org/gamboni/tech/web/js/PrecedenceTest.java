@@ -54,6 +54,20 @@ public class PrecedenceTest {
                         flushQueue.invoke()));
     }
 
+    @Test
+    void testIfBraces() {
+        var a = JsExpression.of("a");
+        var b = JsExpression.of("b");
+        var c = JsExpression.of("c");
+        var d = JsExpression.of("d");
+        var f = new Fun1("f");
+
+        assertFormat("if (a){if (b)f(1); else if (c)f(2);} else if (d)f(3);",
+        _if(a, _if(b, f.invoke(literal(1)))
+                ._elseIf(c, f.invoke(literal(2))))
+                ._elseIf(d, f.invoke(literal(3))));
+    }
+
     private static void assertFormat(String expected, JavaScript.JsFragment expression) {
         assertEquals(expected,
                 expression.format(JavaScript.Scope.NO_DECLARATION));

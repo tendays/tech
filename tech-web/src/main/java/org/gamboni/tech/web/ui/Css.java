@@ -1,14 +1,14 @@
 package org.gamboni.tech.web.ui;
 
-import com.google.common.base.CaseFormat;
 import com.google.common.collect.ImmutableList;
 import com.google.common.reflect.Reflection;
 
 import java.lang.reflect.Field;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static com.google.common.base.CaseFormat.*;
 
 /**
  * @author tendays
@@ -37,7 +37,7 @@ public abstract class Css implements Resource {
     }
 
     public String getUrl() {
-        return "/"+ CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_HYPHEN, getClass().getSimpleName().toLowerCase()) +".css";
+        return "/"+ UPPER_CAMEL.to(LOWER_HYPHEN, getClass().getSimpleName().toLowerCase()) +".css";
     }
 
     @Override
@@ -53,18 +53,91 @@ public abstract class Css implements Resource {
 
     protected String rule(Selector selector, Property... attributes) {
         return selector.renderSelector() +" {\n" +
-                Stream.of(attributes).map(Objects::toString).collect(Collectors.joining())
+                Stream.of(attributes).map(Property::render).collect(Collectors.joining())
                 +"}\n";
+    }
+
+    public enum Cursor implements Property.AsEnum<Cursor> {
+        POINTER
+    }
+
+    public enum Display implements Property.AsEnum<Display> {
+        NONE,
+        BLOCK,
+        INLINE_BLOCK
+    }
+
+    public enum CssFloat implements Property.AsEnum<CssFloat> {
+        LEFT, RIGHT;
+
+        @Override
+        public String key() {
+            return "float";
+        }
+    }
+
+    public enum FontFamily implements Property.AsEnum<FontFamily> {
+        SANS, SERIF
+    }
+
+    public enum FontStyle implements Property.AsEnum<FontStyle> {
+        ITALIC, NORMAL
+    }
+    public enum FontSynthesis implements Property.AsEnum<FontSynthesis> {
+        NONE
+    }
+
+    public enum FontVariantCaps implements Property.AsEnum<FontVariantCaps> {
+        SMALL_CAPS
+    }
+
+    public enum ObjectFit implements Property.AsEnum<ObjectFit> {
+        COVER
+    }
+
+    public enum Overflow implements Property.AsEnum<Overflow> {
+        HIDDEN
+    }
+
+    public enum Position implements Property.AsEnum<Position> {
+        ABSOLUTE,
+        FIXED,
+        RELATIVE
+    }
+
+    public enum TextAlign implements Property.AsEnum<TextAlign> {
+        LEFT, CENTER, RIGHT
+    }
+
+    public enum TextDecoration implements Property.AsEnum<TextDecoration> {
+        NONE
+    }
+
+    public enum VerticalAlign implements Property.AsEnum<VerticalAlign> {
+        TOP
+    }
+
+    public enum WhiteSpace implements Property.AsEnum<WhiteSpace> {
+        NOWRAP
+    }
+
+    private static String formatPropertyValue(String name, Object value) {
+        if (name.equals("content")) {
+            return "\"" + value +"\"";
+        } else {
+            return value.toString();
+        }
     }
 
     /** A Property factory */
     public interface Properties {
         // TODO later: make Css be abstract and implement Properties instead
         Properties INSTANCE = Reflection.newProxy(Properties.class, (proxy, method, args) ->
-                new Property(
-                        CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_HYPHEN,
+                (args[0] instanceof Property) ? args[0] :
+                new Property.AsRecord(
+                        UPPER_CAMEL.to(LOWER_HYPHEN,
                                 method.getName().startsWith("_")? method.getName().substring(1) : method.getName()),
-                        args[0].toString())
+                        formatPropertyValue(method.getName(), args[0]))
         );
 
         /** Vertical aligment in Flex containers. */
@@ -76,13 +149,15 @@ public abstract class Css implements Resource {
         Property borderRadius(String value);
         Property color(String value);
         Property content(String value);
-        Property cursor(String cursor);
-        Property display(String value);
+        Property cursor(Cursor cursor);
+        Property display(Display value);
         Property filter(String value);
-        Property _float(String value);
-        Property fontFamily(String value);
+        Property _float(CssFloat value);
+        Property fontFamily(FontFamily value);
         Property fontSize(String value);
-        Property fontVariantCaps(String value);
+        Property fontStyle(FontStyle value);
+        Property fontSynthesis(FontSynthesis value);
+        Property fontVariantCaps(FontVariantCaps value);
         Property fontWeight(String value);
         Property height(String value);
         /** Horizontal alignment in Flex containers. */
@@ -94,40 +169,48 @@ public abstract class Css implements Resource {
         Property maxHeight(String value);
         Property maxWidth(String value);
         /** E.g. objectFit("cover") to enlarge images to fit some size. */
-        Property objectFit(String value);
-        Property overflow(String value);
+        Property objectFit(ObjectFit value);
+        Property overflow(Overflow value);
         Property padding(String value);
-        Property position(String value);
+        Property position(Position value);
         Property right(String value);
-        Property textAlign(String value);
-        Property textDecoration(String value);
+        Property textAlign(TextAlign value);
+        Property textDecoration(TextDecoration value);
         Property top(String value);
-        Property verticalAlign(String value);
-        Property whiteSpace(String value);
+        Property verticalAlign(VerticalAlign value);
+        Property whiteSpace(WhiteSpace value);
         Property width(String value);
         Property zIndex(int value);
     }
 
     /** A css property (Something:something;) */
-    protected static class Property {
-        public final String name;
-        public final String value;
+    protected interface Property {
+        String key();
+        String value();
 
-        public Property(String name, String value) {
-            this.name = name;
-            this.value = value;
+        default String render() {
+            return "  "+ key() +": "+ value() +";\n";
         }
 
-        public static Property width(String value) {
-            return new Property("width", value);
-        }
+        record AsRecord(String key, String value) implements Property {}
 
-        public String toString() {
-            return "  "+ name +": "+ value +";\n";
+        interface AsEnum<E extends Enum<E>> extends Property {
+            String name(); // implemented by Enum
+            default String key() {
+                return UPPER_CAMEL.to(LOWER_HYPHEN, getClass().getSimpleName());
+            }
+
+            default String value() {
+                return UPPER_UNDERSCORE.to(LOWER_HYPHEN, name());
+            }
         }
     }
 
     public interface Selector {
+        /** Matches elements with the given tag name. */
+        static Selector ofTag(String tagName) {
+            return () -> tagName;
+        }
 
         Selector NOTHING = new Selector() {
             @Override
@@ -147,6 +230,11 @@ public abstract class Css implements Resource {
             return () -> this.renderSelector() +", "+ that.renderSelector();
         }
 
+        /** thisthat (warning, might not work with complex selectors) */
+        default Selector and(Selector that) {
+            return () -> this.renderSelector() + that.renderSelector();
+        }
+
         /** "this that" */
         default Selector child(Selector that) {
             return () -> this.renderSelector() +" "+ that.renderSelector();
@@ -160,6 +248,16 @@ public abstract class Css implements Resource {
         /** "this::before" */
         default Selector before() {
             return () -> this.renderSelector() +"::before";
+        }
+
+        /** "this:empty" */
+        default Selector empty() {
+            return () -> this.renderSelector() +":empty";
+        }
+
+        /** "this:not(:empty)" */
+        default Selector notEmpty() {
+            return () -> this.renderSelector() +":not(:empty)";
         }
     }
 

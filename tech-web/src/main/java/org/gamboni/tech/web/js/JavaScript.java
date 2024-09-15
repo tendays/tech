@@ -151,7 +151,7 @@ public abstract class JavaScript {
     }
 
     public enum StatementPrecedence {
-        BLOCK, SEQUENCE
+        BLOCK, CONTROL_STRUCTURE, SEQUENCE
     }
 
     /** A {@link JsExpression} that defaults precedence to CONJUNCTION.
@@ -537,7 +537,7 @@ public abstract class JavaScript {
         }
 
         default String formatAsBlock(Scope s) {
-            return JavaScript.formatAsBlock(this, this.format(s));
+            return JavaScript.format(this, this.format(s), StatementPrecedence.BLOCK);
         }
 
         default StatementPrecedence getPrecedence() {
@@ -545,8 +545,8 @@ public abstract class JavaScript {
         }
     }
 
-    private static String formatAsBlock(JsStatement st, String formatted) {
-        return (st.getPrecedence() == StatementPrecedence.BLOCK) ?
+    private static String format(JsStatement st, String formatted, StatementPrecedence precedence) {
+        return st.getPrecedence().compareTo(precedence) <= 0 ?
                 formatted // already a block
                 : ("{" + formatted + "}");
     }
@@ -610,11 +610,26 @@ public abstract class JavaScript {
 
         @Override
         public JsStatement _else(JsFragment... body) {
-            return s -> this.format(s) +" else "+ seq(body).formatAsBlock(s);
+            return new JsStatement() {
+                @Override
+                public String format(Scope s) {
+                    return IfBlock.this.format(s) +" else "+ seq(body).formatAsBlock(s);
+                }
+
+                @Override
+                public StatementPrecedence getPrecedence() {
+                    return StatementPrecedence.CONTROL_STRUCTURE;
+                }
+            };
         }
         @Override
         public String format(Scope s) {
             return "if ("+ condition.format(s) +")"+ body.formatAsBlock(s);
+        }
+
+        @Override
+        public StatementPrecedence getPrecedence() {
+            return StatementPrecedence.CONTROL_STRUCTURE;
         }
     }
 
@@ -628,7 +643,8 @@ public abstract class JavaScript {
 
         @Override
         public String format(Scope s) {
-            return previous.format(s) +" else "+ JavaScript.formatAsBlock(this, super.format(s));
+            return previous.format(s) +" else "+
+                    JavaScript.format(this, super.format(s), StatementPrecedence.CONTROL_STRUCTURE);
         }
     }
 

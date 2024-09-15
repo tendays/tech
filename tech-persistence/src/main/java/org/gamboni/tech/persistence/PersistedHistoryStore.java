@@ -18,8 +18,7 @@ import java.util.function.Consumer;
 public abstract class PersistedHistoryStore<
         Q,
         S extends Stamped,
-        T extends HistoryStore.AbstractUpdateSession<E>,
-        E> extends HistoryStore<Q,S,T,E> {
+        T extends HistoryStore.AbstractUpdateSession> extends HistoryStore<Q,S,T> {
     @Inject
     protected EntityManager em;
 
@@ -37,7 +36,7 @@ public abstract class PersistedHistoryStore<
 
     @Override
     @Transactional
-    public StampedEventList<E> addListener(BroadcastTarget client, Q query, long since) {
+    public StampedEventList addListener(BroadcastTarget client, Q query, long since) {
         return super.addListener(client, query, since);
     }
 

@@ -5,7 +5,7 @@ import org.gamboni.tech.web.js.JS;
 import java.util.Collection;
 
 @JS
-public record StampedEventList<E>(
+public record StampedEventList(
         long stamp,
-        Collection<? extends E> updates) implements Stamped {
+        Collection<?> updates) implements Stamped {
 }
