@@ -12,7 +12,8 @@ plugins {
 
 rootProject.name = "tech"
 include("tech-web")
+include("tech-persistence")
 include("tech-history")
 include("tech-sparkjava")
 include("tech-quarkus")
-include("tech-persistence")
+include("tech-quarkus-deployment")
