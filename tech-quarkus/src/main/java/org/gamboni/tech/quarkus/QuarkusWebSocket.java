@@ -3,17 +3,17 @@ package org.gamboni.tech.quarkus;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
-import io.vertx.core.Vertx;
+import io.quarkus.websockets.next.*;
+import io.smallrye.common.annotation.Blocking;
+import io.smallrye.common.annotation.NonBlocking;
 import jakarta.inject.Inject;
-import jakarta.websocket.OnClose;
-import jakarta.websocket.OnError;
-import jakarta.websocket.OnOpen;
-import jakarta.websocket.Session;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.gamboni.tech.history.HistoryStore;
 import org.gamboni.tech.web.ws.BroadcastTarget;
 import org.gamboni.tech.web.ws.ClientCollection;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -23,17 +23,17 @@ import java.util.function.Function;
 public abstract class QuarkusWebSocket {
 
     @Inject
-    protected Vertx vertx;
-
-    @Inject
     protected ObjectMapper json;
 
-    private final ClientCollection<Session>  clients = new ClientCollection<>();
+    @Inject
+    protected HistoryStore<?, ?, ?> abstractStore;
+
+    private final ClientCollection<WebSocketConnection>  clients = new ClientCollection<>();
 
 
     @RequiredArgsConstructor
     public class SessionBroadcastTarget implements BroadcastTarget {
-        private final Session session;
+        private final WebSocketConnection session;
 
         /**
          * (Final but contents is mutable)
@@ -48,8 +48,10 @@ public abstract class QuarkusWebSocket {
 
         @Override
         public void sendOrLog(Object payload) {
-            session.getAsyncRemote()
-                    .sendText(toJsonString(payload));
+            // NOTE: might be good to return the Uni<>, but then how do we do it from Spark?
+            session.sendText(toJsonString(payload))
+                    .await()
+                    .indefinitely();
         }
 
         /**
@@ -106,21 +108,39 @@ public abstract class QuarkusWebSocket {
     }
 
     @OnOpen
-    public synchronized void onOpen(Session session) {
+    @NonBlocking
+    public synchronized void onOpen(WebSocketConnection session) {
         log.debug("New session opened");
         clients.put(session, new SessionBroadcastTarget(session));
     }
 
+    @OnTextMessage
+    @Blocking
+    public synchronized void onMessage(String message, WebSocketConnection session) throws IOException {
+        handleMessage(clients.get(session), message);
+    }
+
+    protected abstract void handleMessage(BroadcastTarget client, String message) throws IOException;
+
     @OnClose
-    public synchronized void onClose(Session session) {
+    @NonBlocking
+    public synchronized void onClose(WebSocketConnection session) {
         log.info("Session {} closing", session);
-        clients.remove(session);
+        removeSession(session);
     }
 
     @OnError
-    public synchronized void onError(Session session, Throwable error) {
+    @NonBlocking
+    public synchronized void onError(WebSocketConnection session, Throwable error) {
         log.error("Session {} failed", session, error);
-        clients.remove(session);
+        removeSession(session);
+    }
+
+    private void removeSession(WebSocketConnection session) {
+        BroadcastTarget client = clients.remove(session);
+        if (client != null) {
+            abstractStore.removeListener(client);
+        }
     }
 
     /** Broadcast customised information to all clients (e.g. filtering relevant/visible information to each).

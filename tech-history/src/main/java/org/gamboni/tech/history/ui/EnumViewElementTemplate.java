@@ -1,6 +1,8 @@
 package org.gamboni.tech.history.ui;
 
-import org.gamboni.tech.history.ClientStateHandler;
+import lombok.RequiredArgsConstructor;
+import org.gamboni.tech.history.event.JsNewStateEvent;
+import org.gamboni.tech.history.event.NewStateEvent;
 import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.ui.*;
 import org.gamboni.tech.web.ui.Html.Attribute;
@@ -13,33 +15,113 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toMap;
+import static lombok.AccessLevel.PRIVATE;
 import static org.gamboni.tech.web.js.JavaScript.*;
 import static org.gamboni.tech.web.ui.Html.escape;
 
 /** A self-updating element displaying the state of an entity, represented by an enum type.
  * <p>
- *     Usage: construct a single instance with {@link #EnumViewElementTemplate(Class, String, Element)}
- *     by giving the <em>base (static) element</em>
+ *     Usage: construct a single instance with {@link #ofStaticBase(Class, Function, Function, Element)}
+ *     by giving the <em>base (static) element</em> (or {@link #ofDynamicBase(Class, Function, Function, ElementRenderer)}
+ *     with a renderer for the bits not depending on the state),
  *     then specify variable parts (only style or contents for now) by calling {@code with*} methods as required.
- *     Then, {@linkplain #register(ClientStateHandler) register} your instance into the state handler and call
- *     {@link Renderer#render(String, Enum)} on the returned object for server-side rendering of your component.
+ *     Then, {@linkplain #addTo(DynamicPage)} your instance into the state handler and call
+ *     {@link Renderer#render(Object)} on the returned object for server-side rendering of your component.
  *     To actually trigger client-side changes you need to emit {@link NewStateEvent}s with the same key and id passed
  *     to the constructor of this object.
  * </p>
  *
  * @param <E> the state type displayed in this object.
  */
-public class EnumViewElementTemplate<E extends Enum<E>> {
+@RequiredArgsConstructor(access = PRIVATE)
+public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPageMember<Object, IdentifiedElementRenderer<D>> {
     private final Class<E> enumType;
-    private final String key;
-    private final Element base;
-    private final Map<String, DynamicAttribute<? super E>> attributes = new HashMap<>();
+    private final Function<D, Value<?>> getId;
+    private final Function<D, Value<E>> getState;
+    private final String eventKey;
+    private final String elementKey;
+    private final ElementRenderer<D> base;
+    private final AttributeCollection<E> attributes;
     private Optional<DynamicContent<E>> contents = Optional.empty();
 
-    interface DynamicAttribute<E> {
-        Attribute apply(String id, E value);
+    private abstract static class AttributeCollection<E> {
+        final Map<String, DynamicAttribute<? super E>> attributes = new HashMap<>();
 
-        JsStatement update(JsHtmlElement elt, Value<E> value);
+        abstract Element apply(Element base, Function<DynamicAttribute<? super E>, Attribute> attributeRenderer);
+
+        public void put(String name, DynamicAttribute<? super E> value) {
+            attributes.put(name, value);
+        }
+
+        public Stream<? extends JsStatement> update(JsHtmlElement elt, Value<E> newState) {
+            return attributes.values().stream()
+                    .map(dynamicAttribute -> dynamicAttribute.update(elt,
+                            newState));
+
+        }
+
+        public DynamicAttribute<? super E> get(String key) {
+            return attributes.get(key);
+        }
+
+        public abstract AttributeCollection<E> copy();
+    }
+
+    private static class ExtraAttributes<E> extends AttributeCollection<E> {
+
+        @Override
+        public Element apply(Element base, Function<DynamicAttribute<? super E>, Attribute> attributeRenderer) {
+            return attributes
+                    .values()
+                    .stream()
+                    .map(attributeRenderer)
+                    .reduce(base,
+                            Element::plusAttribute,
+                            (__, ___) -> { throw new UnsupportedOperationException(); });
+        }
+
+        @Override
+        public AttributeCollection<E> copy() {
+            var copy = new ExtraAttributes<E>();
+            copy.attributes.putAll(this.attributes);
+            return copy;
+        }
+    }
+
+    private static class AttributeReplacement<E> extends AttributeCollection<E> {
+
+        public AttributeReplacement(Element base) {
+            for (var baseAttr : base.getAttributes()) {
+                this.put(baseAttr.getAttributeName(),
+                        // by default, use constant attribute values that ignore the e value
+                        new ConstantAttribute<>(baseAttr));
+            }
+        }
+
+        private AttributeReplacement(Map<String, DynamicAttribute<? super E>> attributes) {
+            this.attributes.putAll(attributes);
+        }
+
+        @Override
+        public Element apply(Element base, Function<DynamicAttribute<? super E>, Attribute> attributeRenderer) {
+            return base
+                    .withAttributes(attributes
+                            .values()
+                            .stream()
+                            .map(attributeRenderer)
+                            .toList());
+        }
+
+        @Override
+        public AttributeCollection<E> copy() {
+            return new AttributeReplacement<E>(this.attributes);
+        }
+    }
+
+    interface DynamicAttribute<E> {
+        Attribute apply(Value<String> id, Value<? extends E> value);
+
+        JsStatement update(JsHtmlElement elt, Value<? extends E> value);
     }
 
     public interface DynamicContent<E> {
@@ -51,25 +133,25 @@ public class EnumViewElementTemplate<E extends Enum<E>> {
     private record ConstantAttribute<E>(Attribute attr) implements DynamicAttribute<E> {
 
         @Override
-        public Attribute apply(String id, E value) {
+        public Attribute apply(Value<String> id, Value<? extends E> value) {
             return attr;
         }
 
         @Override
-        public JsStatement update(JsHtmlElement elt, Value<E> value) {
+        public JsStatement update(JsHtmlElement elt, Value<? extends E> value) {
             return seq();
         }
     }
 
-    private record DynamicCssClassAttribute<E extends Enum<E>>(Function<Value<E>, Css.ClassList> function) implements DynamicAttribute<E> {
+    private record DynamicCssClassAttribute<E extends Enum<E>>(Function<? super Value<? extends E>, Css.ClassList> function) implements DynamicAttribute<E> {
 
         @Override
-        public Attribute apply(String id, E value) {
-            return function.apply(Value.of(value));
+        public Attribute apply(Value<String> id, Value<? extends E> value) {
+            return function.apply(value);
         }
 
         @Override
-        public JsStatement update(JsHtmlElement elt, Value<E> value) {
+        public JsStatement update(JsHtmlElement elt, Value<? extends E> value) {
             return elt.classList().set(literal(
                     function.apply(value)));
         }
@@ -77,34 +159,53 @@ public class EnumViewElementTemplate<E extends Enum<E>> {
 
     private static final DynamicAttribute<Object> ID_ATTRIBUTE = new DynamicAttribute<>() {
         @Override
-        public Attribute apply(String id, Object value) {
+        public Attribute apply(Value<String> id, Value<?> value) {
             return Html.attribute("id", id);
         }
 
         @Override
-        public JsStatement update(JsHtmlElement elt, Value<Object> value) {
+        public JsStatement update(JsHtmlElement elt, Value<?> value) {
             return seq();
         }
     };
 
     /** Construct an instance (which serves as a <em>template</em> you can render multiple times in your
-     * pages.
+     * pages).
      * @param enumType the enum type.
-     * @param key a string identifying this particular template within the page.
-     *            It will be used in events sent from the back end as well as appended to the id of HTML elements.
      * @param base the static part of the element to use as a template.
      */
-    public EnumViewElementTemplate(Class<E> enumType, String key, Element base) {
-        this.enumType = enumType;
-        this.key = key;
-        this.base = base;
+    public static <D, E extends Enum<E>> EnumViewElementTemplate<D, E> ofStaticBase(
+            Class<E> enumType,
+            Function<D, Value<?>> getId,
+            Function<D, Value<E>> getState,
+            Element base) {
+        var result = new EnumViewElementTemplate<D, E>(enumType, getId, getState, "", "", __ -> base, new AttributeReplacement<>(base));
+        result.attributes.put("id", ID_ATTRIBUTE);
+        return result;
+    }
 
-        for (var baseAttr : base.getAttributes()) {
-            attributes.put(baseAttr.getAttributeName(),
-                    // by default, use constant attribute values that ignore the e value
-                    new ConstantAttribute<>(baseAttr));
+    public static <D,E extends Enum<E>> EnumViewElementTemplate<D, E> ofDynamicBase(Class<E> enumType, Function<D, Value<?>> getId, Function<D, Value<E>> getState, ElementRenderer<D> base) {
+        var result = new EnumViewElementTemplate<>(enumType, getId, getState, "", "", base, new ExtraAttributes<>());
+        if (base instanceof IdentifiedElementRenderer<D> identifiedBase) {
+            result = result.withElementKey(identifiedBase.getElementKey());
         }
-        attributes.put("id", ID_ATTRIBUTE);
+        result.attributes.put("id", ID_ATTRIBUTE);
+        return result;
+    }
+
+    /**
+     * @param eventKey a string restricting which events this template will react to.
+     */
+    public EnumViewElementTemplate<D, E> withEventKey(String eventKey) {
+        return new EnumViewElementTemplate<>(enumType, getId, getState, eventKey, elementKey, base, attributes.copy());
+    }
+
+    /**
+     * @param elementKey a string identifying this particular template within the page.
+     *            It will be appended to the id of HTML elements.
+     */
+    public EnumViewElementTemplate<D, E> withElementKey(String elementKey) {
+        return new EnumViewElementTemplate<>(enumType, getId, getState, eventKey, elementKey, base, attributes.copy());
     }
 
     /** Add dynamic styling varying in function of the enum value.
@@ -112,7 +213,7 @@ public class EnumViewElementTemplate<E extends Enum<E>> {
      * @param map a map of enum values to the corresponding CSS class to use.
      * @return this, for chaining
      */
-    public EnumViewElementTemplate<E> withStyle(Css.EnumToClassName<E> map) {
+    public EnumViewElementTemplate<D, E> withStyle(Css.EnumToClassName<E> map) {
         // TODO maybe put an and() method in DynamicCssClassAttribute to avoid this mess over here
         DynamicAttribute<? super E> classAttribute = attributes.get("class");
         if (classAttribute == null) {
@@ -123,6 +224,7 @@ public class EnumViewElementTemplate<E extends Enum<E>> {
         } else {
             // type parameter is really <? super E>, but DynamicCssClassAttribute.function
             // does not declare wildcards on inputs.
+            @SuppressWarnings("unchecked")
             var previous = (DynamicCssClassAttribute<E>)classAttribute;
             putAttribute("class", new DynamicCssClassAttribute<E>(e -> previous.function.apply(
                     e)
@@ -135,7 +237,7 @@ public class EnumViewElementTemplate<E extends Enum<E>> {
         this.attributes.put(attributeName, attr);
     }
 
-    public EnumViewElementTemplate<E> withContents(DynamicContent<E> contents) {
+    public EnumViewElementTemplate<D, E> withContents(DynamicContent<E> contents) {
         this.contents = Optional.of(contents);
         return this;
     }
@@ -145,7 +247,7 @@ public class EnumViewElementTemplate<E extends Enum<E>> {
      * @param renderer a map of enum values to the corresponding CSS class to use.
      * @return this, for chaining
      */
-    public EnumViewElementTemplate<E> withContents(Function<E, String> renderer) {
+    public EnumViewElementTemplate<D, E> withContents(Function<E, String> renderer) {
         Map<E, JsString> formats = Stream.of(enumType.getEnumConstants())
                 .collect(toMap(
                         e -> e,
@@ -172,39 +274,42 @@ public class EnumViewElementTemplate<E extends Enum<E>> {
         });
     }
 
-    /** Register this template into the given state handler. This method should typically be called once
+    /**
+     * Register this template into the given state handler. This method should typically be called once
      * from a {@link AbstractPage} subclass constructor or post-construct method. It ensures template instance
      * get properly updated when a change event is dispatched.
      *
-     * @param stateHandler the client state handler into which to register the change event handler.
+     * @param page the client state handler into which to register the change event handler.
      */
-    public RendererWithId<E> register(ClientStateHandler stateHandler) {
-        stateHandler.addHandler((event, callback) -> {
+    public <P extends DynamicPage<?>> IdentifiedElementRenderer<D> addTo(P page) {
+        // Used for element ids. Note that a single event key can be linked to multiple
+        // DOM elements, in case a piece of information impacts multiple elements.
+        String idPrefix = page.freshElementId(elementKey) + "-";
+
+        page.addHandler((event, callback) -> {
             var wrapped = new JsNewStateEvent(event);
-            callback.expect(wrapped.key().eq(literal(key)));
+            callback.expect(event.dot("@type").eq(literal(NewStateEvent.class.getSimpleName())));
+            callback.expect(wrapped.key().eq(literal(eventKey)));
             return wrapped;
-        }, event -> let(getElementById(event.id().plus("-" + key)),
+        }, event -> let(getElementById(literal(idPrefix).plus(event.id())),
                 JsHtmlElement::new,
                 elt -> Stream.concat(
                                 contents.stream()
                                         .map(c -> c.update(elt, Value.of(event.newState()))),
-                                attributes.values().stream()
-                                        .map(dynamicAttribute -> dynamicAttribute.update(elt,
-                                                Value.of(event.newState()))))
+                                attributes.update(elt, Value.of(event.newState())))
                         .collect(JavaScript.toSeq())));
 
         /* Create a renderer */
-        return (id, value) -> {
-            String eltId = id + "-" + key;
-            Element withNewAttributes = base.withAttributes(attributes
-                    .values()
-                    .stream()
-                    .map(f -> f.apply(eltId, value))
-                    .toList());
+        return IdentifiedElementRenderer.of(elementKey, value -> {
+            Value<E> enumValue = getState.apply(value);
+            Value<String> eltId = Value.concat(Value.of(idPrefix), getId.apply(value));
+            Element withNewAttributes = attributes.apply(
+                    base.render(value),
+                    attr -> attr.apply(eltId, enumValue));
 
-            return contents.map(c -> c.apply(Value.of(value)))
+            return contents.map(c -> c.apply(enumValue))
                     .map(c -> withNewAttributes.withContents(List.of(c)))
                     .orElse(withNewAttributes);
-        };
+        });
     }
 }

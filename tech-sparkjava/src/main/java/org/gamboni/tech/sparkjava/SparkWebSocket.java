@@ -141,7 +141,7 @@ public abstract class SparkWebSocket {
 
     @OnWebSocketClose
     public synchronized void onClose(Session session, int statusCode, String reason) {
-        clients.remove(session);
+        clients.remove(session); // TODO then remove from store like we do with Quarkus
         log.info("Connection {} terminated: {} {} ", session, statusCode, reason);
     }
 
@@ -164,7 +164,7 @@ public abstract class SparkWebSocket {
         return new JsPersistentWebSocket(getPath(), handler) {
 
             @Override
-            public void addTo(AbstractPage<?> page) {
+            public JsPersistentWebSocket addTo(AbstractPage<?> page) {
                 page.addToScript(
                         keepAliveHandle.declare(_null),
                         sendKeepAlive.declare(keepAliveHandle.set(
@@ -174,7 +174,7 @@ public abstract class SparkWebSocket {
                                         KEEPALIVE_MILLIS)
                         )));
 
-                super.addTo(page);
+                return super.addTo(page);
             }
 
             @Override

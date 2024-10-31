@@ -21,8 +21,12 @@ public class ClientCollection<S> {
         return clients.get(session);
     }
 
-    public void remove(S session) {
-        clients.remove(session).markClosed();
+    public BroadcastTarget remove(S session) {
+        BroadcastTarget client = clients.remove(session);
+        if (client != null) {
+            client.markClosed();
+        }
+        return client;
     }
 
     public void broadcast(Object payload) {

@@ -17,12 +17,24 @@ import static org.gamboni.tech.web.js.JavaScript.seq;
  * @param <T> the data needed to render the page
  * @author tendays
  */
-public abstract class AbstractPage<T> extends AbstractComponent implements Renderer<T> {
+public abstract class AbstractPage<T> extends AbstractComponent implements Renderer<T>, Page<T> {
     private final Script script;
+
+    public final JavaScript.Scope globals = new JavaScript.Scope();
+
+    /** Many ids are actually concatenated with the id of an object. In this case this
+     * scope will only contain the fixed part.
+     */
+    private final JavaScript.Scope elementIds = new JavaScript.Scope();
 
     private final JavaScript.FunN onLoad = new JavaScript.FunN("onLoad");
     private final Map<String, Function<T, JavaScript.JsExpression>> onLoadParameters = new HashMap<>();
     private final List<JavaScript.JsFragment> loadBody = new ArrayList<>();
+
+    @Override
+    public String freshElementId(String base) {
+        return elementIds.freshVariableName(base);
+    }
 
     public interface OnLoad<T> {
         JavaScript.JsExpression addParameter(Function<T, JavaScript.JsExpression> value);
@@ -54,7 +66,7 @@ public abstract class AbstractPage<T> extends AbstractComponent implements Rende
         script.setUrl(basePath + "script.js");
     }
 
-    protected HtmlElement html(T data, Iterable<Resource> dependencies, Iterable<Element> body) {
+    protected HtmlElement html(T data, Iterable<Resource> dependencies, Iterable<Html> body) {
         Iterable<Resource> actualDependencies;
         if (script.isEmpty()) {
             actualDependencies = dependencies;
@@ -89,10 +101,10 @@ public abstract class AbstractPage<T> extends AbstractComponent implements Rende
 
     protected static class HtmlElement extends Element {
         private final Iterable<Resource> dependencies;
-        private final Iterable<Element> body;
+        private final Iterable<Html> body;
         private final List<Html.Attribute> bodyAttributes;
 
-        public HtmlElement(Iterable<Resource> dependencies, Iterable<Element> body, List<Html.Attribute> bodyAttributes) {
+        public HtmlElement(Iterable<Resource> dependencies, Iterable<Html> body, List<Html.Attribute> bodyAttributes) {
             super("html",
                     new Element("head", Iterables.transform(dependencies, Resource::asElement)),
                     new Element("body", bodyAttributes, body));

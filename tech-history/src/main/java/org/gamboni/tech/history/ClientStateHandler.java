@@ -1,10 +1,15 @@
 package org.gamboni.tech.history;
 
+import com.google.common.collect.LinkedHashMultimap;
+import com.google.common.collect.Multimap;
+import org.gamboni.tech.history.event.JsStampedEventList;
 import org.gamboni.tech.web.js.JsPersistentWebSocket;
 import org.gamboni.tech.web.ui.AbstractPage;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -32,31 +37,54 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
         return this;
     }
 
-    private JsStatement applyUpdate(JsExpression event) {
-        if (handlers.isEmpty()) { return seq(); } // degenerate case
-        IfLike chain = EMPTY_IF_CHAIN;
-
-        for (var h : handlers.subList(0, handlers.size() - 1)) {
-            chain = doElseIf(h, event, chain);
+    private record ConditionKey(JsExpression expr) {
+        public int hashCode() {
+            return format().hashCode();
         }
-        return chain._else(doElse(handlers.get(handlers.size() - 1), event));
+
+        public boolean equals(Object obj) {
+            return (obj instanceof ConditionKey that) &&
+                    this.format().equals(that.format());
+        }
+
+        private String format() {
+            return expr.format(Scope.NO_DECLARATION);
+        }
     }
 
-    private <E> IfLike doElseIf(EventHandler<E> handler, JsExpression event, IfLike chain) {
-        var conditions = new ArrayList<JsExpression>();
-        var wrappedEvent = handler.matcher.apply(event, conditions::add);
-        return chain._elseIf(
-                conditions.stream()
-                        .reduce(JsExpression::and)
-                        .orElse(literal(true)),
-                handler.handler().apply(wrappedEvent));
+    private JsStatement applyUpdate(JsExpression event) {
+        // do a single [else]if block for all handlers sharing the same condition
+        Multimap<Set<ConditionKey>, JsFragment> evaluatedHandlers = LinkedHashMultimap.create();
+
+        for (var h : handlers) {
+            addHandlerToMultimap(h, event, evaluatedHandlers);
+        }
+
+        return evaluatedHandlers.asMap()
+                .entrySet()
+                .stream()
+                .reduce(EMPTY_IF_CHAIN,
+                        (chain, entry) ->
+                                chain._elseIf(
+                                        // entry.key: all conditions that must be true to enter this block
+                                        entry.getKey()
+                                                .stream()
+                                                .map(ConditionKey::expr)
+                                                .reduce(JsExpression::and)
+                                                .orElse(literal(true)),
+                                        // entry.value: all handlers triggered by this combination of conditions
+                                        entry.getValue()
+                                                .stream()
+                                                .collect(toSeq())),
+                        (__, ___) -> {
+                            throw new IllegalStateException("Unnecessary in sequential streams");
+                        });
     }
 
-    private <E> JsFragment doElse(EventHandler<E> lastHandler, JsExpression event) {
-        return lastHandler.handler.apply(
-                lastHandler
-                        .matcher.apply(event, ignored -> {
-                        }));
+    private <E> void addHandlerToMultimap(EventHandler<E> handler, JsExpression event, Multimap<Set<ConditionKey>, JsFragment> evaluatedHandlers) {
+        var conditions = new LinkedHashSet<ConditionKey>();
+        var wrappedEvent = handler.matcher.apply(event, cond -> conditions.add(new ConditionKey(cond)));
+        evaluatedHandlers.put(conditions, handler.handler().apply(wrappedEvent));
     }
 
     protected abstract JsExpression helloValue(JsExpression stamp);
@@ -80,8 +108,9 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
     }
 
     @Override
-    public void addTo(AbstractPage<?> page) {
+    public ClientStateHandler addTo(AbstractPage<?> page) {
         page.addToScript(stamp.declare(0)); // initialised by init()?
+        return this;
     }
 
     public JsStatement init(JsExpression stampValue) {

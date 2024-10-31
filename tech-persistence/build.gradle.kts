@@ -13,6 +13,12 @@ group = "org.gamboni"
 version = "0.0.3-SNAPSHOT"
 
 dependencies {
+    val lombok = "org.projectlombok:lombok:1.18.30"
+    compileOnly(lombok)
+    annotationProcessor(lombok)
+
+    implementation(libs.guava)
+
     api(project(":tech-history"))
     implementation("io.quarkus:quarkus-hibernate-orm:3.5.0")
 

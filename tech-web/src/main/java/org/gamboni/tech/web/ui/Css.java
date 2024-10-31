@@ -1,34 +1,93 @@
 package org.gamboni.tech.web.ui;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
 import com.google.common.reflect.Reflection;
+import org.gamboni.tech.web.js.JavaScript;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.google.common.base.CaseFormat.*;
+import static org.gamboni.tech.web.js.JavaScript.array;
+import static org.gamboni.tech.web.js.JavaScript.literal;
 
 /**
  * @author tendays
  */
 public abstract class Css implements Resource {
 
-    public record EnumToClassName<T extends Enum<T>>(Class<T> enumType) {
-        // Maps.toMap(Arrays.asList(State.values()),
-        //            s -> new ClassName(s.name().toLowerCase()));
+    public interface EnumToClassName<T extends Enum<T>> {
+
+        ClassName get(T key);
+
+        ClassName get(Value<? extends T> key);
+
+
+        public static <T extends Enum<T>> PageMember<Object, EnumToClassName<T>> forFunction(Class<T> enumType, Function<T, ClassName> fun) {
+
+            Multimap<ClassName, T> values =
+                    Multimaps.index(Arrays.asList(enumType.getEnumConstants()),
+                    fun::apply);
+
+            return page -> {
+
+                var classNames = new JavaScript.JsGlobal(page.globals.freshVariableName(
+                        UPPER_CAMEL.to(LOWER_CAMEL, enumType.getSimpleName()) +"Class"));
+
+                // Object.fromEntries(['a', 'b', 'c'].map(k => [k, 'toto']).concat(['d', 'e'].map(k => [k, 'titi'])))
+
+                page.addToScript(classNames.declare(
+                        JavaScript.JsExpression.of("Object").invoke("fromEntries",
+                                values.asMap()
+                                        .entrySet()
+                                        .stream()
+                                        .map(entry -> entry.getValue()
+                                                .stream()
+                                                .map(JavaScript::literal)
+                                                .collect(JavaScript.toArray())
+                                                .invoke("map", JavaScript.lambda("k", k -> array(k, literal(entry.getKey())))))
+                                        .reduce((arrayLeft, arrayRight) -> arrayLeft.invoke("concat", arrayRight))
+                                        .orElseThrow(() -> new IllegalArgumentException("Given enum type " + enumType.getSimpleName() +" should have at least one value")))));
+
+                return new EnumToClassName<>() {
+                    @Override
+                    public ClassName get(T key) {
+                        return fun.apply(key);
+                    }
+
+                    @Override
+                    public ClassName get(Value<? extends T> key) {
+                        if (key instanceof Value.Constant<? extends T> constantKey) {
+                            return this.get(constantKey.getConstantValue());
+                        } else {
+                            return new ClassName(Value.of(classNames.arrayGet(key.toExpression())));
+                        }
+                    }
+                };
+            };
+        }
+    }
+
+    public record OneCssClassPerEnumValue<T extends Enum<T>>(Class<T> enumType) implements EnumToClassName<T> {
         public Stream<ClassName> valueStream() {
             return Stream.of(enumType.getEnumConstants())
                     .map(this::get);
         }
 
+        @Override
         public ClassName get(T key) {
             return new ClassName(key.name().toLowerCase());
         }
 
-        public ClassName get(Value<T> key) {
-            if (key instanceof Value.Constant<T> cst) {
+        @Override
+        public ClassName get(Value<? extends T> key) {
+            if (key instanceof Value.Constant<? extends T> cst) {
                 return get(cst.getConstantValue());
             } else {
                 return new ClassName(Value.of(key.toExpression().toLowerCase()));
@@ -184,7 +243,7 @@ public abstract class Css implements Resource {
     }
 
     /** A css property (Something:something;) */
-    protected interface Property {
+    public interface Property {
         String key();
         String value();
 

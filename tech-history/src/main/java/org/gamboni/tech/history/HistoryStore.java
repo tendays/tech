@@ -3,6 +3,8 @@ package org.gamboni.tech.history;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import lombok.RequiredArgsConstructor;
+import org.gamboni.tech.history.event.Event;
+import org.gamboni.tech.history.event.StampedEventList;
 import org.gamboni.tech.web.ws.BroadcastTarget;
 
 import java.util.Collection;
@@ -30,15 +32,15 @@ public abstract class HistoryStore<
 
     public class PerClientUpdates {
         private final long stamp;
-        private final Multimap<BroadcastTarget, Object> updates;
+        private final Multimap<BroadcastTarget, Event> updates;
 
-        public PerClientUpdates(long stamp, Multimap<BroadcastTarget, Object> updates) {
+        public PerClientUpdates(long stamp, Multimap<BroadcastTarget, Event> updates) {
             this.stamp = stamp;
             this.updates = updates;
         }
 
         public Optional<StampedEventList> get(BroadcastTarget target) {
-            Collection<Object> events = this.updates.get(target);
+            Collection<Event> events = this.updates.get(target);
             if (events.isEmpty()) {
                 return Optional.empty();
             } else {
@@ -56,7 +58,7 @@ public abstract class HistoryStore<
     @RequiredArgsConstructor
     public static class AbstractUpdateSession {
         protected final long stamp;
-        protected final Multimap<BroadcastTarget, Object> notifications = HashMultimap.create();
+        protected final Multimap<BroadcastTarget, Event> notifications = HashMultimap.create();
     }
 
     protected abstract T newTransaction(long stamp);
@@ -72,5 +74,7 @@ public abstract class HistoryStore<
         return new StampedEventList(getStamp(), internalAddListener(client, query, since));
     }
 
-    protected abstract List<?> internalAddListener(BroadcastTarget client, Q query, long since);
+    protected abstract List<? extends Event> internalAddListener(BroadcastTarget client, Q query, long since);
+
+    public abstract void removeListener(BroadcastTarget client);
 }

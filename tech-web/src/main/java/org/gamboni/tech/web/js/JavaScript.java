@@ -8,12 +8,10 @@ import org.gamboni.tech.web.ui.Css;
 import org.gamboni.tech.web.ui.ScriptMember;
 import org.gamboni.tech.web.ui.Value;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -247,7 +245,15 @@ public abstract class JavaScript {
         }
 
         default JsExpression dot(String attr) {
-            return s -> this.format(s, Precedence.ATOM) +"."+ attr;
+            if (attr.length() > 0 &&
+                    Character.isJavaIdentifierStart(attr.codePointAt(0)) &&
+                    attr.chars()
+                            .skip(1)
+                            .allMatch(Character::isJavaIdentifierPart)) {
+                return s -> this.format(s, Precedence.ATOM) +"."+ attr;
+            } else {
+                return this.arrayGet(literal(attr));
+            }
         }
 
         default JsStatement set(JsExpression newValue) {
@@ -261,9 +267,12 @@ public abstract class JavaScript {
                             .collect(joining(", "))+")";
         }
 
+        /** The "strict" equality operator: {@code this === that}. */
         default JsExpression eq(JsExpression value) {
             return s -> this.format(s, Precedence.ADDITION) +" === "+ value.format(s, Precedence.ADDITION);
         }
+
+        /** The "strict" equality operator: {@code this === that}. */
         default JsExpression eq(Enum<?> value) {
             return this.eq(literal(value));
         }
@@ -272,12 +281,23 @@ public abstract class JavaScript {
             return new JsString(this.invoke("toLowerCase"));
         }
 
+        /** The logical AND operator: {@code this && that}. */
         default JsExpression and(JsExpression rhs) {
             return (JsConjunction) s -> this.format(s, Precedence.CONJUNCTION) + " && " + rhs.format(s, Precedence.CONJUNCTION);
         }
 
+        /** The logical OR operator: {@code this || that}. */
         default JsExpression or(JsExpression rhs) {
             return (JsDisjunction) s -> this.format(s) + " || " + rhs.format(s);
+        }
+
+        default JsExpression arrayGet(JsExpression key) {
+            return s -> this.format(s) +"[" + key.format(s) +"]";
+        }
+
+        /** The logical negation {@code !this}. */
+        default JsExpression not() {
+            return s -> "!" + this.format(s, Precedence.ATOM);
         }
     }
 
@@ -358,6 +378,9 @@ public abstract class JavaScript {
 
         public JsString substring(int len) {
             return new JsString(this.invoke("substring", literal(len)));
+        }
+        public JsString slice(int from, int to) {
+            return new JsString(this.invoke("slice", literal(from), literal(to)));
         }
         @Override
         public String format(Scope s) {
@@ -688,20 +711,53 @@ public abstract class JavaScript {
         return obj(ImmutableMap.of(k1, v1, k2, v2));
     }
 
-    public static JsExpression array() {
-        return s -> "[]";
+    public static JsExpression array(JsExpression... members) {
+        return array(() -> Stream.of(members));
+    }
+
+    private static JsExpression array(Supplier<Stream<JsExpression>> members) {
+        return s -> "[" + members.get()
+                .map(expr -> expr.format(s))
+                .collect(joining(", ")) +"]";
+    }
+
+    /** A Stream Collector turning a Stream of JsExpressions into an array of those expressions. */
+    public static Collector<JsExpression, ?, JsExpression> toArray() {
+        return Collector.<JsExpression, List<JsExpression>, JsExpression>of(
+                ArrayList::new,
+                List::add,
+                (left, right) -> { left.addAll(right); return left;},
+                list -> array(list::stream));
     }
 
     public static class Scope {
+        private Set<String> used = new HashSet<>();
+
         /** A special Scope which does not allow declaring variables. */
         public static final Scope NO_DECLARATION = new Scope() {
             public String freshVariableNam() {
                 throw new IllegalStateException("Variable declaration not allowed here");
             }
         };
-        private int next = 0;
+
+        /** Return a new variable name. */
         public String freshVariableName() {
-            return "v" + (next++);
+            return freshVariableName("v");
+        }
+
+        /** Return a new variable name starting with the given base (if the given name is already taken, a number is added
+         * until a unique name is found.
+         *
+         * @param base the base name to use. Should be a valid JavaScript variable name.
+         * @return a new unique variable name, which may or may not be equal to the given base name.
+         */
+        public String freshVariableName(String base) {
+            String candidate = base;
+            int counter = 1;
+            while (!used.add(candidate)) { // as long as adding to 'used' doesn't change anything...
+                candidate = base + (counter++);
+            }
+            return candidate;
         }
     }
 }
