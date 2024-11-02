@@ -2,8 +2,7 @@ package org.gamboni.tech.history;
 
 public abstract class InMemoryHistoryStore<Q,
         S extends Stamped,
-        T extends HistoryStore.AbstractUpdateSession,
-        E>
+        T extends HistoryStore.AbstractUpdateSession>
         extends HistoryStore<Q, S, T> {
 
 
