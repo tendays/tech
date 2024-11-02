@@ -8,6 +8,7 @@ import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.ui.*;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -78,15 +79,23 @@ public static <T> ArrayElement<T> withRemoval(Function<T, Value<String>> getId, 
                     return page.addHandler(matcher,
                             event -> {
                                 var template = renderer.render(extractor.apply(event));
-                                // only create an element if there wasn't already one with the same id
-                                return _if(getElementById(template.getAttribute("id")
-                                                .orElseThrow(() -> new IllegalArgumentException("Array element renderer must have an 'id' attribute to be able to detect duplicates"))
+
+                                Optional<Html.Attribute> idAttribute = template.getAttribute("id");
+
+                                JsStatement createElement = template.javascriptCreate(elt ->
+                                        addAt.insert(getElementById(literal(idPrefix)), elt)
+                                );
+
+                                return
+                                        // If there's an 'id' attribute,
+                                        // only create an element if there wasn't already one with the same id
+                                        idAttribute.<JsStatement>map(id -> _if(getElementById(id
                                                 .getAttributeValue()
                                                 .toExpression())
                                                 .not(),
-                                        template.javascriptCreate(elt ->
-                                                addAt.insert(getElementById(literal(idPrefix)), elt)
-                                        ));
+                                        createElement))
+                                                // If no 'id' attribute, we were created with 'addOnly' and don't detect duplicates
+                                        .orElse(createElement);
                             });
                 }
             };
