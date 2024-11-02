@@ -9,7 +9,7 @@ repositories {
 }
 
 group = "org.gamboni"
-version = "0.0.3-SNAPSHOT"
+version = "0.0.3"
 
 dependencies {
     val lombok = "org.projectlombok:lombok:1.18.30"
