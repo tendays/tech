@@ -145,11 +145,21 @@ public abstract class JavaScript {
     }
 
     public enum Precedence {
-        ATOM, MULTIPLICATION, ADDITION, CONJUNCTION, DISJUNCTION
+        ATOM, MULTIPLICATION, ADDITION, CONJUNCTION, DISJUNCTION, ASSIGNMENT
     }
 
     public enum StatementPrecedence {
         BLOCK, CONTROL_STRUCTURE, SEQUENCE
+    }
+
+    /** A {@link JsExpression} that defaults precedence to CONJUNCTION.
+     * This interface exists to allow the use of lambda for non-atoms.
+     */
+    private interface JsAssignment extends JsExpression {
+        @Override
+        default Precedence getPrecedence() {
+            return Precedence.ASSIGNMENT;
+        }
     }
 
     /** A {@link JsExpression} that defaults precedence to CONJUNCTION.
@@ -272,6 +282,14 @@ public abstract class JavaScript {
             return s -> this.format(s, Precedence.ADDITION) +" === "+ value.format(s, Precedence.ADDITION);
         }
 
+        default JsExpression eq(String value) {
+            return this.eq(literal(value));
+        }
+
+        default JsExpression eq(long value) {
+            return this.eq(literal(value));
+        }
+
         /** The "strict" equality operator: {@code this === that}. */
         default JsExpression eq(Enum<?> value) {
             return this.eq(literal(value));
@@ -298,6 +316,14 @@ public abstract class JavaScript {
         /** The logical negation {@code !this}. */
         default JsExpression not() {
             return s -> "!" + this.format(s, Precedence.ATOM);
+        }
+
+        /** The ternary operator {@code this ? ifTrue : ifFalse}. */
+        default JsExpression cond(JsExpression ifTrue, JsExpression ifFalse) {
+            // TODO add tests for this case in particular checking behaviour with nested ternaries which likely won't work as-is
+            return (JsAssignment) s -> this.format(s, Precedence.DISJUNCTION) +"? "+
+                    ifTrue.format(s, Precedence.DISJUNCTION) +" : "+
+                    ifFalse.format(s, Precedence.DISJUNCTION);
         }
     }
 

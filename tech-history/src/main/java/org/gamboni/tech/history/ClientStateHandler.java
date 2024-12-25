@@ -1,5 +1,6 @@
 package org.gamboni.tech.history;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Multimap;
 import org.gamboni.tech.history.event.JsStampedEventList;
@@ -18,6 +19,13 @@ import static org.gamboni.tech.web.js.JavaScript.*;
 public abstract class ClientStateHandler implements JsPersistentWebSocket.Handler {
     public interface MatchCallback {
         void expect(JsExpression toBeTruthy);
+        /** Check that the event has the same type as the given object. This method returns its argument.
+         * This allows, if you only need to check the type, to implement a matcher with a single expression                                 like this:
+         * <pre>{@code (event, callback) -> callback.expectSameType(new JsYourEventType(event))}</pre>
+         * @param event the event, wrapped in a Js* type
+         * @return {@code event}.
+         */
+        <T extends JsExpression> T expectSameType(T event);
     }
 
     private record EventHandler<T>(
@@ -83,7 +91,28 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
 
     private <E> void addHandlerToMultimap(EventHandler<E> handler, JsExpression event, Multimap<Set<ConditionKey>, JsFragment> evaluatedHandlers) {
         var conditions = new LinkedHashSet<ConditionKey>();
-        var wrappedEvent = handler.matcher.apply(event, cond -> conditions.add(new ConditionKey(cond)));
+        var wrappedEvent = handler.matcher.apply(event,
+                new MatchCallback() {
+                    @Override
+                    public void expect(JsExpression cond) {
+                        conditions.add(new ConditionKey(cond));
+                    }
+
+                    // Note: we'd like to restrict this to "JsEvent" types, but
+                    // currently the JS annotation processor does not allow tracking that information.
+
+                    // Two options: 1. actually generate a JsEvent marker interface and let JSProcessor
+                    // add implements JsEvent when processing Event implementors
+                    // 2. on all Js* types add a Represents<?> marker interface pointing back to the
+                    // @JS-annotated type. Then we can do {@code <T extends Represents<? extends Event>>} here
+                    @Override
+                    public <T extends JsExpression> T expectSameType(T event) {
+                        String className = event.getClass().getSimpleName();
+                        Preconditions.checkArgument(className.startsWith("Js"));
+                        expect(event.dot("@type").eq(className.substring(2)));
+                        return event;
+                    }
+                });
         evaluatedHandlers.put(conditions, handler.handler().apply(wrappedEvent));
     }
 
@@ -98,7 +127,7 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
                 stampedEventList -> seq(
                         stamp.set(stampedEventList.stamp()),
                         _forOf(stampedEventList.updates(),
-                                item -> applyUpdate(item))
+                                this::applyUpdate)
                 ));
     }
 
@@ -109,7 +138,7 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
 
     @Override
     public ClientStateHandler addTo(AbstractPage<?> page) {
-        page.addToScript(stamp.declare(0)); // initialised by init()?
+        page.addToScript(stamp.declare(0)); // initialised by init()
         return this;
     }
 

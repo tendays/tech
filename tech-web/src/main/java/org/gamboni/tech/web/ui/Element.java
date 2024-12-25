@@ -36,9 +36,34 @@ public class Element implements Html {
         return contents;
     }
 
+    /** Add the given attribute to this object. NOTE: if an attribute with the same name aready exists,
+     * the returned attribute will have <em>multiple</em> attributes with the same name.
+     * <p>If you want to replace an existing attribute, use {@link #withAttribute(Attribute)} instead.</p>
+     * @param newAttribute the attribute to append to existing ones.
+     * @return the element with the new attribute added.
+     */
     public Element plusAttribute(Attribute newAttribute) {
         return this.withAttributes(ImmutableList.<Attribute>builderWithExpectedSize(1+ Iterables.size(attributes))
                 .addAll(attributes)
+                .add(newAttribute)
+                .build());
+    }
+
+    /** Set the given attribute on this object, replacing any already-existing attribute(s) with the
+     * same name. NOTE: if an attribute with the same name already exists,
+     * the returned attribute will have <em>multiple</em> attributes with the same name.
+     * <p>If you want to have multiple attributes with the same name, use {@link #plusAttribute(Attribute)} instead.</p>
+     * @param newAttribute the attribute to set on top of existing ones.
+     * @return the element with the new attribute set.
+     */
+    public Element withAttribute(Attribute newAttribute) {
+        ImmutableList.Builder<Attribute> attributeBuilder = ImmutableList.<Attribute>builderWithExpectedSize(1 + Iterables.size(attributes));
+        for (Attribute existing : this.attributes) {
+            if (!existing.getAttributeName().equals(newAttribute.getAttributeName())) {
+                attributeBuilder.add(existing);
+            }
+        }
+        return this.withAttributes(attributeBuilder
                 .add(newAttribute)
                 .build());
     }

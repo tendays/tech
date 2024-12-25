@@ -43,6 +43,9 @@ public class Tag implements Html {
     }
 
     static String renderAttributes(Iterable<? extends Attribute> attributes) {
-        return Streams.stream(attributes).map(Attribute::render).collect(Collectors.joining(" "));
+        return Streams.stream(attributes)
+                .filter(a -> !a.isTrivial())
+                .map(Attribute::render)
+                .collect(Collectors.joining(" "));
     }
 }

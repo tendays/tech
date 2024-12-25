@@ -145,6 +145,11 @@ public interface Html extends HtmlFragment {
         String getAttributeName();
         Value<String> getAttributeValue();
 
+        /** Return {@code true} if this attribute holds a default/null value and can be omitted completely. */
+        default boolean isTrivial() {
+            return false;
+        }
+
         default JsStatement javascriptCreate(JsExpression elt) {
                 return JsStatement.of(
                         elt.invoke("setAttribute",

@@ -1,6 +1,7 @@
 package org.gamboni.tech.web.ui;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterators;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.google.common.reflect.Reflection;
@@ -8,6 +9,7 @@ import org.gamboni.tech.web.js.JavaScript;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -320,12 +322,16 @@ public abstract class Css implements Resource {
         }
     }
 
-    public interface ClassList extends Html.Attribute {
+    public interface ClassList extends Html.Attribute, Iterable<ClassName> {
+        ClassList EMPTY = new MultiClass(List.of());
+
         @Override default String getAttributeName() {
             return "class";
         }
 
         ClassList and(ClassName that);
+
+        ClassList addTo(ClassList that);
     }
 
     private static class MultiClass implements ClassList {
@@ -344,6 +350,17 @@ public abstract class Css implements Resource {
         }
 
         @Override
+        public ClassList addTo(ClassList that) {
+            return names.stream()
+                    .reduce(that,
+                            (list, name) ->
+                            list.and(new ClassName(name)),
+                            (__, ___) -> {
+                        throw new UnsupportedOperationException();
+                            });
+        }
+
+        @Override
         public Value<String> getAttributeValue() {
             return names
                     .stream()
@@ -351,7 +368,33 @@ public abstract class Css implements Resource {
                                     Value.concat(
                                             Value.concat(l, Value.of(" ")),
                                     r))
-                    .orElseThrow();
+                    .orElse(Value.of(""));
+
+            // Note that we don't pass Value.of("") as 'identity' parameter of reduce()
+            // because currently concat(of(""), x) will return ("" + x) instead of just (x) even if, like here,
+            // we know that x is always a String. See comment in Value.concat()
+        }
+
+        @Override
+        public boolean isTrivial() {
+            return names.isEmpty();
+        }
+
+        @Override
+        public Iterator<ClassName> iterator() {
+            return Iterators.transform(
+                    names.iterator(),
+                    ClassName::new);
+        }
+
+        @Override
+        public int hashCode() {
+            return names.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object that) {
+            return (that instanceof MultiClass mc) && mc.names.equals(this.names);
         }
     }
 
@@ -382,6 +425,24 @@ public abstract class Css implements Resource {
         @Override
         public ClassList and(ClassName that) {
             return new MultiClass(ImmutableList.of(this.name, that.name));
+        }
+
+        @Override
+        public ClassList addTo(ClassList that) {
+            return that.and(this);
+        }
+
+        @Override
+        public Iterator<ClassName> iterator() {
+            return Iterators.singletonIterator(this);
+        }
+
+        public int hashCode() {
+            return name.hashCode();
+        }
+
+        public boolean equals(Object that) {
+            return (that instanceof ClassName cn) && cn.name.equals(this.name);
         }
     }
 
