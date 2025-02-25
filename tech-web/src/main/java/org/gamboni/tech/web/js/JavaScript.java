@@ -8,6 +8,7 @@ import org.gamboni.tech.web.ui.Css;
 import org.gamboni.tech.web.ui.ScriptMember;
 import org.gamboni.tech.web.ui.Value;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -39,9 +40,17 @@ public abstract class JavaScript {
     public static JsExpression literal(long value) {
         return s -> String.valueOf(value);
     }
+
+    public static JsExpression literal(double value) {
+        return s -> String.valueOf(value);
+    }
+
     public static JsExpression literal(boolean value) {
         return s -> String.valueOf(value);
     }
+
+    /** Return an expression returning a JavaScript {@code Date} corresponding to the given {@code Instant}. */
+    public static JsExpression literal(Instant instant) { return newDate(literal(instant.toString())); }
 
     public static JsStatement _return(JsExpression value) {
         return s -> "return " + value.format(s) + ";";
@@ -520,6 +529,8 @@ public abstract class JavaScript {
 
     /** The WebSocket class, can be used to access readyState values like OPEN, CLOSED, etc. */
     public static JsExpression WebSocket = s -> "WebSocket";
+
+    public static JsExpression newDate(JsExpression value) { return s -> "new Date(" + value.format(s) +")"; }
 
     public static JsExpression jsonParse(JsExpression text) {
         return s -> "JSON.parse(" + text.format(s) +")";

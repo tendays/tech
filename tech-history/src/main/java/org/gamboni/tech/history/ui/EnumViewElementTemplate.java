@@ -38,14 +38,12 @@ import static org.gamboni.tech.web.ui.Html.escape;
  * @param <E> the state type displayed in this object.
  */
 @RequiredArgsConstructor(access = PRIVATE)
-public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements DynamicPageMember<Object, IdentifiedElementRenderer<D>> {
+public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPageMember<Object, IdentifiedElementRenderer<D>> {
 
     private final Class<E> enumType;
     private final Function<D, Value<?>> getId;
     private final Function<D, Value<E>> getState;
-    private final BiFunction<JsExpression, ClientStateHandler.MatchCallback, V> eventMatcher;
-    private final Function<V, JsExpression> eventId;
-    private final Function<V, JsExpression> eventState;
+    private final BiFunction<JsExpression, ClientStateHandler.MatchCallback, EventData> eventMatcher;
     private final String elementKey;
     private final ElementRenderer<D> base;
     private final StyleAttribute<E> style;
@@ -176,11 +174,11 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
             }
         }
 
-        private static BiFunction<JsExpression, ClientStateHandler.MatchCallback, JsNewStateEvent> defaultEventMatcher(String eventKey) {
+        private static BiFunction<JsExpression, ClientStateHandler.MatchCallback, EventData> defaultEventMatcher(String eventKey) {
         return (event, callback) -> {
             var wrapped = callback.expectSameType(new JsNewStateEvent(event));
             callback.expect(wrapped.key().eq(literal(eventKey)));
-            return wrapped;
+            return new EventData(wrapped.id(), wrapped.newState());
         };
     }
 
@@ -202,15 +200,13 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
      * @param enumType the enum type.
      * @param base the static part of the element to use as a template.
      */
-    public static <D, E extends Enum<E>> EnumViewElementTemplate<D, JsNewStateEvent, E> ofStaticBase(
+    public static <D, E extends Enum<E>> EnumViewElementTemplate<D, E> ofStaticBase(
             Class<E> enumType,
             Function<D, Value<?>> getId,
             Function<D, Value<E>> getState,
             Element base) {
         return new EnumViewElementTemplate<>(enumType, getId, getState,
                 defaultEventMatcher(""),
-                JsNewStateEvent::id,
-                JsNewStateEvent::newState,
                 "", __ -> base,
                 new ConstantStyle<>(
                         base.getAttribute("class").map(attr -> (Css.ClassList) attr)
@@ -218,11 +214,9 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
                 ));
     }
 
-    public static <D,E extends Enum<E>> EnumViewElementTemplate<D, JsNewStateEvent, E> ofDynamicBase(Class<E> enumType, Function<D, Value<?>> getId, Function<D, Value<E>> getState, ElementRenderer<D> base) {
+    public static <D,E extends Enum<E>> EnumViewElementTemplate<D, E> ofDynamicBase(Class<E> enumType, Function<D, Value<?>> getId, Function<D, Value<E>> getState, ElementRenderer<D> base) {
         var result = new EnumViewElementTemplate<>(enumType, getId, getState,
                 defaultEventMatcher(""),
-                JsNewStateEvent::id,
-                JsNewStateEvent::newState,
                 "", base,
                 new PreserveStyle<>());
         if (base instanceof IdentifiedElementRenderer<D> identifiedBase) {
@@ -234,28 +228,27 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
     /**
      * @param eventKey a string restricting which events this template will react to.
      */
-    public EnumViewElementTemplate<D, JsNewStateEvent, E> withEventKey(String eventKey) {
+    public EnumViewElementTemplate<D, E> withEventKey(String eventKey) {
         return new EnumViewElementTemplate<>(enumType, getId, getState,
                 defaultEventMatcher(eventKey),
-                JsNewStateEvent::id,
-                JsNewStateEvent::newState,
                 elementKey, base, style);
     }
 
+    public record EventData(JsExpression id, JsExpression state) {}
+
     /**
      * @param eventMatcher a replacement matcher flagging events this template should react to.
-     *                     TODO three parameters should be merged into one (by letting the function return a pair)
      */
-    public <V2> EnumViewElementTemplate<D, V2, E> withEventMatcher(BiFunction<JsExpression, ClientStateHandler.MatchCallback, V2> eventMatcher, Function<V2, JsExpression> eventId, Function<V2, JsExpression> eventState) {
-        return new EnumViewElementTemplate<>(enumType, getId, getState, eventMatcher, eventId, eventState, elementKey, base, style);
+    public EnumViewElementTemplate<D, E> withEventMatcher(BiFunction<JsExpression, ClientStateHandler.MatchCallback, EventData> eventMatcher) {
+        return new EnumViewElementTemplate<>(enumType, getId, getState, eventMatcher, elementKey, base, style);
     }
 
     /**
      * @param elementKey a string identifying this particular template within the page.
      *            It will be appended to the id of HTML elements.
      */
-    public EnumViewElementTemplate<D, V, E> withElementKey(String elementKey) {
-        return new EnumViewElementTemplate<>(enumType, getId, getState, eventMatcher, eventId, eventState, elementKey, base, style);
+    public EnumViewElementTemplate<D, E> withElementKey(String elementKey) {
+        return new EnumViewElementTemplate<>(enumType, getId, getState, eventMatcher, elementKey, base, style);
     }
 
     /** Add dynamic styling varying in function of the enum value.
@@ -263,8 +256,8 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
      * @param map a map of enum values to the corresponding CSS class to use.
      * @return this, for chaining
      */
-    public EnumViewElementTemplate<D, V, E> withStyle(Css.EnumToClassName<E> map) {
-        return new EnumViewElementTemplate<>(enumType, getId, getState, eventMatcher, eventId, eventState, elementKey, base,
+    public EnumViewElementTemplate<D, E> withStyle(Css.EnumToClassName<E> map) {
+        return new EnumViewElementTemplate<>(enumType, getId, getState, eventMatcher, elementKey, base,
                 this.style.add(map::get));
     }
 
@@ -276,7 +269,7 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
                 .orElseThrow();
     }
 
-    public EnumViewElementTemplate<D, V, E> withContents(DynamicContent<E> contents) {
+    public EnumViewElementTemplate<D, E> withContents(DynamicContent<E> contents) {
         // TODO it's weird that this one field is non-final
         this.contents = Optional.of(contents);
         return this;
@@ -287,7 +280,7 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
      * @param renderer a map of enum values to the corresponding CSS class to use.
      * @return this, for chaining
      */
-    public EnumViewElementTemplate<D, V, E> withContents(Function<E, String> renderer) {
+    public EnumViewElementTemplate<D, E> withContents(Function<E, String> renderer) {
         Map<E, JsString> formats = Stream.of(enumType.getEnumConstants())
                 .collect(toMap(
                         e -> e,
@@ -326,12 +319,12 @@ public class EnumViewElementTemplate<D, V, E extends Enum<E>> implements Dynamic
         // DOM elements, in case a piece of information impacts multiple elements.
         String idPrefix = page.freshElementId(elementKey) + "-";
 
-        page.addHandler(eventMatcher, event -> let(getElementById(literal(idPrefix).plus(eventId.apply(event))),
+        page.addHandler(eventMatcher, event -> let(getElementById(literal(idPrefix).plus(event.id())),
                 JsHtmlElement::new,
                 elt -> Stream.concat(
                                 contents.stream()
-                                        .map(c -> c.update(elt, Value.of(eventState.apply(event)), enumType)),
-                                Stream.of(style.update(elt, Value.of(eventState.apply(event)), enumType)))
+                                        .map(c -> c.update(elt, Value.of(event.state()), enumType)),
+                                Stream.of(style.update(elt, Value.of(event.state()), enumType)))
                         .collect(JavaScript.toSeq())));
 
         /* Create a renderer */

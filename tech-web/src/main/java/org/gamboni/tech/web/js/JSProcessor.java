@@ -18,6 +18,7 @@ import javax.lang.model.util.SimpleTypeVisitor14;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.io.Writer;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -113,8 +114,11 @@ public class JSProcessor extends AbstractProcessor {
                     "import " + Map.class.getName() + ";\n" +
                     "import " + JavaScript.class.getName() + ";\n" +
                     "import " + JavaScript.JsExpression.class.getName().replace("$", ".") + ";\n" +
+                    "import " + JsType.class.getName() + ";\n" +
                     "\n" +
-                    "public class " + jsType + " implements JsExpression {\n" +
+                    "import " + javaType +";\n" +
+                    "\n" +
+                    "public class " + jsType + " implements JsType<" + recordType +"> {\n" +
                     "  private final JsExpression delegate;\n" +
                     "\n" +
                     "  public " + jsType + "(JsExpression delegate) {\n" +
@@ -123,6 +127,11 @@ public class JSProcessor extends AbstractProcessor {
                     "\n" +
                     "  public " + jsType + "(String js) {\n" +
                     "    this.delegate = s -> js;\n" +
+                    "  }\n" +
+                    "\n" +
+                    "  @Override\n" +
+                    "  public Class<" + recordType +"> getBackendType() {\n" +
+                    "    return " + recordType + ".class;\n" +
                     "  }\n" +
                     "\n" +
                     "  @Override\n" +
@@ -232,6 +241,8 @@ public class JSProcessor extends AbstractProcessor {
 
     /** see {@code of()} method overloads in {@link org.gamboni.tech.web.ui.Value}. */
     private static final Set<String> SUPPORTED_VALUES = Set.of(
+            Double.class.getName(),
+            Instant.class.getName(),
             Long.class.getName(),
             String.class.getName());
 

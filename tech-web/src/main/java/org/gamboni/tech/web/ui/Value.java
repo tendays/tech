@@ -2,8 +2,17 @@ package org.gamboni.tech.web.ui;
 
 import org.gamboni.tech.web.js.JavaScript;
 
+import java.time.Instant;
 import java.util.Objects;
 
+/** Abstracts over back-end and front-end values. In the back end, this object
+ * simply wraps an actual value like a String or a Number. In the front end,
+ * this object wraps a {@link JavaScript.JsExpression} for use when generating
+ * JavaScript code. As the interface is the same for both case, this allows
+ * defining expressions that are either evaluated at run time (for back-end
+ * values, typically when doing server-side rendering) or produce equivalent
+ * JavaScript expressions that will be shipped to the browser for later evaluation.
+ */
 public interface Value<T> {
     JavaScript.JsExpression toExpression();
 
@@ -70,6 +79,14 @@ public interface Value<T> {
     }
 
     static Value<Long> of(long value) {
+        return Constant.of(value, () -> JavaScript.literal(value));
+    }
+
+    static Value<Double> of(double value) {
+        return Constant.of(value, () -> JavaScript.literal(value));
+    }
+
+    static Value<Instant> of(Instant value) {
         return Constant.of(value, () -> JavaScript.literal(value));
     }
 
