@@ -1,5 +1,6 @@
 package org.gamboni.tech.web.ui;
 
+import com.google.common.base.Preconditions;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,11 +17,14 @@ public class Script implements Resource {
 
     private final List<ScriptMember> members = new ArrayList<>();
 
+    private boolean exposed = false;
+
     @Getter
     @Setter
     private String url = "/script.js";
 
     public void add(ScriptMember member) {
+        Preconditions.checkState(!exposed, "Adding elements to a script is not allowed once it has stared rendering!");
         this.members.add(member);
     }
 
@@ -30,6 +34,7 @@ public class Script implements Resource {
 
     @Override
     public String render() {
+        this.exposed = true;
         return members
                 .stream()
                 .map(ScriptMember::render)

@@ -21,14 +21,14 @@ public abstract class QuarkusDynamicPage<T extends Stamped> extends QuarkusPage<
         }
     };
 
-    private final JsPersistentWebSocket socket = new JsPersistentWebSocket(stateHandler);
+    private JsPersistentWebSocket.Added socket;
 
     protected abstract JavaScript.JsExpression helloValue(JavaScript.JsExpression stamp);
 
 
     @PostConstruct
     public void postConstructDynamicPage() {
-        socket.addTo(this);
+        socket = new JsPersistentWebSocket(stateHandler).addTo(this);
         addToOnLoad(onLoad -> stateHandler.init(onLoad.addParameter(
                 data -> literal(data.stamp()))));
     }

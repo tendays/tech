@@ -1,20 +1,46 @@
 package org.gamboni.tech.web.js;
 
 import lombok.RequiredArgsConstructor;
-import org.gamboni.tech.web.ui.AbstractPage;
+import org.gamboni.tech.web.ui.Page;
 import org.gamboni.tech.web.ui.PageMember;
 
+import static lombok.AccessLevel.PRIVATE;
 import static lombok.AccessLevel.PROTECTED;
 import static org.gamboni.tech.web.js.JavaScript.*;
 
 @RequiredArgsConstructor(access = PROTECTED)
-public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWebSocket> {
+public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWebSocket.Added> {
+
+    public static final String DEFAULT_URL = "/sock";
+
+    private final String socketUrl;
+
+    private final Handler handler;
+
+    private static final int POLL_INTERVAL = 60000;
+
+    /** Queued events, used when the connection is down. */
+    protected final JsGlobal queue = new JsGlobal("queue");
+
+    /** Current websocket object. A new one is created every time the connection drops. */
+    protected final JsGlobal socket = new JsGlobal("socket");
+
+    /** Submit an action to send to back-end */
+    protected final Fun1 submit = new Fun1("submit");
+
+    protected final Fun flushQueue = new Fun("flushQueue");
+
+    protected final Fun poll = new Fun("poll");
+
+    public JsPersistentWebSocket(Handler handler) {
+        this(DEFAULT_URL, handler);
+    }
 
     public interface Handler extends PageMember<Object, Handler> {
         /** This method may be overridden to declare any functions or globals needed by this handler.
          * Default implementation does nothing. */
         @Override
-        default Handler addTo(AbstractPage<?> page) {
+        default Handler addTo(Page<?> page) {
             return this;
         }
 
@@ -32,44 +58,27 @@ public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWeb
         JsStatement handleEvent(JsExpression message);
     }
 
-    public static final String DEFAULT_URL = "/sock";
-
-    private final String socketUrl;
-    private final Handler handler;
-
-    public JsPersistentWebSocket(Handler handler) {
-        this(DEFAULT_URL, handler);
+    public static JsPersistentWebSocket forHandler(Handler handler) {
+        return new JsPersistentWebSocket(handler);
     }
-
-    private static final int POLL_INTERVAL = 60000;
-
-    /** Queued events, used when the connection is down. */
-    protected final JsGlobal queue = new JsGlobal("queue");
-
-    /** Current websocket object. A new one is created every time the connection drops. */
-    protected final JsGlobal socket = new JsGlobal("socket");
-
-    /** Submit an action to send to back-end */
-    protected final Fun1 submit = new Fun1("submit");
-
-    protected final Fun flushQueue = new Fun("flushQueue");
-
-    protected final Fun poll = new Fun("poll");
 
     /** Generate necessary machinery for the persistent websocket. This should be inserted into a script executed
      * at page load.
      */
     @Override
-    public JsPersistentWebSocket addTo(AbstractPage<?> page) {
+    public JsPersistentWebSocket.Added addTo(Page<?> page) {
+        var handlerInstance = handler.addTo(page);
+
+        Added added = new Added(handlerInstance);
+
         page.addToScript(queue.declare(JavaScript.array()),
-                socket.declare(JavaScript._null), // should likely immediately call the poll() function
+                socket.declare(JsExpression._null), // should likely immediately call the poll() function
                 submit.declare(action ->
                         submitIfOpen(serialise(action))
                                 ._else(queue.invoke("push", action))),
                 flushQueue.declare(seq(
-                        socket.invoke("send", serialise(handler.helloValue())),
+                        socket.invoke("send", serialise(handlerInstance.helloValue())),
                         let(queue,
-                                JsExpression::of,
                                 queueCopy -> seq(
                                         queue.set(array()),
                                         queueCopy.invoke("forEach", lambda(
@@ -80,8 +89,9 @@ public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWeb
                         ))),
                 poll.declare(seq(
                         socket.set(newWebSocket(
-                                new JsString(s -> "((window.location.protocol === 'https:') ? 'wss://' : 'ws://')")
-                                        .plus(s -> "window.location.host")
+                                JavaScript.window.dot("location").dot("protocol").eq("https")
+                                        .cond(literal("wss://"), literal("ws://"))
+                                        .plus(JavaScript.window.dot("location").dot("host"))
                                         .plus(literal(socketUrl)))),
                         /* If the websocket is already closed, we could not establish the connection, and try again later. */
                         _if(socket.dot("readyState").eq(WebSocket.dot("CLOSED")),
@@ -94,11 +104,10 @@ public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWeb
 
                         socket.invoke("addEventListener", literal("message"),
                                 lambda("event",
-                                        this::onMessage)),
+                                        added::onMessage)),
 
                         let(/* close handler */
                                 lambda("event", this::onClose),
-                                JsExpression::of,
                                 closeHandler -> seq(
                                         // infinite loops trying to reconnect
                                         socket.invoke("addEventListener", literal("close"), closeHandler),
@@ -110,11 +119,29 @@ public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWeb
                                 ))
                 )));
 
-        handler.addTo(page);
+        page.addToOnLoad(onLoad -> added.poll());
 
-        page.addToOnLoad(onLoad -> this.poll());
+        return added;
+    }
 
-        return this;
+    @RequiredArgsConstructor(access = PRIVATE)
+    public class Added {
+        private final Handler handler;
+
+        /** Return the OnMessage event handler. Note: this method receives a raw OnMessage event
+         * and delegates to {@link Handler#handleEvent}. You should normally override handleEvent which
+         * handles the payload object. */
+        protected JsFragment onMessage(JsExpression event) {
+            return handler.handleEvent(jsonParse(event.dot("data")));
+        }
+
+        public JsExpression poll() {
+            return poll.invoke();
+        }
+
+        public JsExpression submit(JsExpression payload) {
+            return submit.invoke(payload);
+        }
     }
 
     protected IfBlock submitIfOpen(JsExpression payload) {
@@ -124,13 +151,6 @@ public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWeb
 
     protected JsFragment onOpen() {
         return flushQueue.invoke();
-    }
-
-    /** Return the OnMessage event handler. Note: this method receives a raw OnMessage event
-     * and delegates to {@link Handler#handleEvent}. You should normally override handleEvent which
-     * handles the payload object. */
-    protected JsFragment onMessage(JsExpression event) {
-        return handler.handleEvent(jsonParse(event.dot("data")));
     }
 
     /** Socket close event handling logic.
@@ -159,14 +179,6 @@ public class JsPersistentWebSocket implements PageMember<Object, JsPersistentWeb
 
                 setTimeout(poll.invoke(), POLL_INTERVAL)
         );
-    }
-
-    public JsExpression poll() {
-        return poll.invoke();
-    }
-
-    public JsExpression submit(JsExpression payload) {
-        return submit.invoke(payload);
     }
 
     /** Convert an expression passed to submit() into an expression to send to the back end. */

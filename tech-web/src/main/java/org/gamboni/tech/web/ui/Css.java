@@ -4,10 +4,17 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
+import com.google.common.reflect.AbstractInvocationHandler;
 import com.google.common.reflect.Reflection;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.gamboni.tech.web.js.JavaScript;
+import org.gamboni.tech.web.ui.value.RatioValue;
+import org.gamboni.tech.web.ui.value.StringValue;
+import org.gamboni.tech.web.ui.value.Value;
 
+import javax.annotation.CheckForNull;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -39,13 +46,13 @@ public abstract class Css implements Resource {
 
             return page -> {
 
-                var classNames = new JavaScript.JsGlobal(page.globals.freshVariableName(
+                var classNames = new JavaScript.JsGlobal(page.freshGlobal(
                         UPPER_CAMEL.to(LOWER_CAMEL, enumType.getSimpleName()) +"Class"));
 
                 // Object.fromEntries(['a', 'b', 'c'].map(k => [k, 'toto']).concat(['d', 'e'].map(k => [k, 'titi'])))
 
                 page.addToScript(classNames.declare(
-                        JavaScript.JsExpression.of("Object").invoke("fromEntries",
+                        JavaScript._Object.invoke("fromEntries",
                                 values.asMap()
                                         .entrySet()
                                         .stream()
@@ -65,11 +72,11 @@ public abstract class Css implements Resource {
 
                     @Override
                     public ClassName get(Value<? extends T> key) {
-                        if (key instanceof Value.Constant<? extends T> constantKey) {
-                            return this.get(constantKey.getConstantValue());
-                        } else {
-                            return new ClassName(Value.of(classNames.arrayGet(key.toExpression())));
-                        }
+                        return key.constantValue()
+                                .map(constantKey ->
+                                        this.get(constantKey))
+                                .orElseGet(() ->
+                                        new ClassName(StringValue.of(classNames.arrayGet(key))));
                     }
                 };
             };
@@ -89,11 +96,9 @@ public abstract class Css implements Resource {
 
         @Override
         public ClassName get(Value<? extends T> key) {
-            if (key instanceof Value.Constant<? extends T> cst) {
-                return get(cst.getConstantValue());
-            } else {
-                return new ClassName(Value.of(key.toExpression().toLowerCase()));
-            }
+            return key.constantValue()
+                    .map(cst -> get(cst))
+                    .orElseGet(() -> new ClassName(StringValue.of(key).toLowerCase()));
         }
     }
 
@@ -267,6 +272,62 @@ public abstract class Css implements Resource {
         }
     }
 
+    /** Like {@link Property} but the value is a {@link StringValue} instead of
+     * a plain {@code String}.
+     *
+     * @apiNote this may eventually replace the {@link Property} interface completely
+     */
+    public interface PropertyValue {
+        String key();
+        StringValue value();
+
+        default JavaScript.JsStatement apply(JavaScript.JsHtmlElement element) {
+            return element.style().dot(LOWER_HYPHEN.to(LOWER_CAMEL, key())).set(value());
+        }
+
+        default String render() {
+            return key() +":"+ value().assertStatic() +";";
+        }
+
+        record AsRecord(String key, StringValue value) implements PropertyValue {}
+    }
+
+    /** Like {@link Properties} but the methods take and return {@code Values}.
+     *
+     * @apiNote this may eventually replace the {@link Properties} interface completely
+     */
+    public interface PropertyValues {
+        PropertyValues INSTANCE = Reflection.newProxy(PropertyValues.class,
+                new AbstractInvocationHandler() {
+                    @CheckForNull
+                    @Override
+                    protected Object handleInvocation(Object proxy, Method method, @Nullable Object[] args) throws Throwable {
+                        StringValue value;
+                        if (args[0] instanceof RatioValue ratio) {
+                            value = ratio.toPercentageString();
+                        } else if (args[0] instanceof String string) {
+                            value = Value.of(string);
+                        } else {
+                            throw new IllegalArgumentException(args[0].getClass().toString());
+                        }
+
+                        return new PropertyValue.AsRecord(
+                                UPPER_CAMEL.to(LOWER_HYPHEN,
+                                        method.getName().startsWith("_") ? method.getName().substring(1) : method.getName()),
+                                value);
+                    }
+
+                    @Override
+                    public String toString() {
+                        return "Css.PropertyValues.INSTANCE";
+                    }
+                }
+        );
+
+        PropertyValue width(RatioValue width);
+        PropertyValue width(String width);
+    }
+
     public interface Selector {
         /** Matches elements with the given tag name. */
         static Selector ofTag(String tagName) {
@@ -335,15 +396,15 @@ public abstract class Css implements Resource {
     }
 
     private static class MultiClass implements ClassList {
-        private final ImmutableList<Value<String>> names;
+        private final ImmutableList<StringValue> names;
 
-        private MultiClass(List<Value<String>> names) {
+        private MultiClass(List<StringValue> names) {
             this.names = ImmutableList.copyOf(names);
         }
 
         @Override
         public ClassList and(ClassName that) {
-            return new MultiClass(ImmutableList.<Value<String>>builder()
+            return new MultiClass(ImmutableList.<StringValue>builder()
                     .addAll(this.names)
                     .add(that.name)
                     .build());
@@ -361,13 +422,11 @@ public abstract class Css implements Resource {
         }
 
         @Override
-        public Value<String> getAttributeValue() {
+        public StringValue getAttributeValue() {
             return names
                     .stream()
                     .reduce((l, r) ->
-                                    Value.concat(
-                                            Value.concat(l, Value.of(" ")),
-                                    r))
+                                            l.plus(Value.of(" ")).plus(r))
                     .orElse(Value.of(""));
 
             // Note that we don't pass Value.of("") as 'identity' parameter of reduce()
@@ -399,11 +458,11 @@ public abstract class Css implements Resource {
     }
 
     public static class ClassName implements Selector, ClassList {
-        public final Value<String> name;
+        public final StringValue name;
         public ClassName(String name) {
             this.name = Value.of(name);
         }
-        public ClassName(Value<String> name) {
+        public ClassName(StringValue name) {
             this.name = name;
         }
 
@@ -412,12 +471,11 @@ public abstract class Css implements Resource {
         }
 
         public String toString() {
-            return this.name instanceof Value.Constant<String> cst ? cst.getConstantValue() :
-                    name.toExpression().toString();
+            return this.name.toString();
         }
 
         @Override
-        public Value<String> getAttributeValue() {
+        public StringValue getAttributeValue() {
             return name;
         }
 

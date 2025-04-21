@@ -2,11 +2,12 @@ package org.gamboni.tech.history.ui;
 
 import com.google.common.collect.Iterables;
 import lombok.RequiredArgsConstructor;
-import org.gamboni.tech.history.event.JsTextEvent;
+import org.gamboni.tech.history.event.TextEventValues;
 import org.gamboni.tech.web.ui.Element;
 import org.gamboni.tech.web.ui.ElementRenderer;
 import org.gamboni.tech.web.ui.Html;
-import org.gamboni.tech.web.ui.Value;
+import org.gamboni.tech.web.ui.value.StringValue;
+import org.gamboni.tech.web.ui.value.Value;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,16 +23,16 @@ public class TextViewElementTemplate<D> implements DynamicPageMember<Object, Ele
     private final String key; // TODO distinguish eventKey and elementKey like EnumViewElementTemplate
     private final Element base;
     private final Function<D, Value<?>> getId;
-    private final Function<D, Value<String>> getValue;
+    private final Function<D, StringValue> getValue;
 
     @Override
     public <P extends DynamicPage<?>> ElementRenderer<D> addTo(P page) {
         String idPrefix = page.freshElementId(key) + "-";
         page.addHandler((event, callback) -> {
-            var wrapped = new JsTextEvent(event);
+            var wrapped = TextEventValues.of(event);
             callback.expect(wrapped.key().eq(literal(key)));
             return wrapped;
-        }, event -> getElementById(literal(idPrefix).plus(event.id()))
+        }, (TextEventValues event) -> getElementById(literal(idPrefix).plus(event.id()))
                 .setInnerText(event.text()));
 
         return entity -> {

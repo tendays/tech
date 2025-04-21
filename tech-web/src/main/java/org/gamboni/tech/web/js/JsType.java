@@ -14,13 +14,12 @@ public interface JsType<B> extends JavaScript.JsExpression {
 
     /** <p>Return a JavaScript expression evaluating to {@code true} if this expression is indeed of type {@code B}.
      * This is necessary because, for a {@code JsSomething} type you can always write</p>
-     * <p>{@code var jsSomething = new JsSomething(someExpression);}</p>
+     * <p>{@code var jsSomething = SomethingValues.of(someExpression);}</p>
      * <p>without any automatic verification that {@code someExpression} is actually a "{@code Something}".
-     * <p>So, before accessing fields in the {@code JsSomething}, you would need to do something like</p>
+     * <p>So, before accessing fields in the {@code SomethingValues}, you would need to do something like</p>
      * <p>{@code _if(jsSomething.isThisType(), {jsSomething is safe to use here})}</p>
      */
     default JavaScript.JsExpression isThisType() {
-        String className = getClass().getSimpleName();
-        return this.dot("@type").eq(className.substring(2));
+        return this.dot("@type").eq(getBackendType().getSimpleName());
     }
 }

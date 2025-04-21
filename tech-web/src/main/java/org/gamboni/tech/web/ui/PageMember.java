@@ -8,5 +8,5 @@ package org.gamboni.tech.web.ui;
  *           is a good idea to only expose your API in this parameter so your users don't forget to register your component in a page.
  */
 public interface PageMember<T, N> {
-    N addTo(AbstractPage<? extends T> page);
+    N addTo(Page<? extends T> page);
 }

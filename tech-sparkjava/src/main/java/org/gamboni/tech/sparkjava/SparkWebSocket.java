@@ -11,7 +11,7 @@ import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
 import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.js.JsPersistentWebSocket;
-import org.gamboni.tech.web.ui.AbstractPage;
+import org.gamboni.tech.web.ui.Page;
 import org.gamboni.tech.web.ws.BroadcastTarget;
 import org.gamboni.tech.web.ws.ClientCollection;
 import spark.Spark;
@@ -23,7 +23,14 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import static org.gamboni.tech.web.js.JavaScript.*;
+import static org.gamboni.tech.web.js.JavaScript.JsExpression;
+import static org.gamboni.tech.web.js.JavaScript.JsExpression._null;
+import static org.gamboni.tech.web.js.JavaScript.JsFragment;
+import static org.gamboni.tech.web.js.JavaScript._if;
+import static org.gamboni.tech.web.js.JavaScript.clearTimeout;
+import static org.gamboni.tech.web.js.JavaScript.literal;
+import static org.gamboni.tech.web.js.JavaScript.seq;
+import static org.gamboni.tech.web.js.JavaScript.setTimeout;
 
 @Slf4j
 public abstract class SparkWebSocket {
@@ -164,7 +171,7 @@ public abstract class SparkWebSocket {
         return new JsPersistentWebSocket(getPath(), handler) {
 
             @Override
-            public JsPersistentWebSocket addTo(AbstractPage<?> page) {
+            public JsPersistentWebSocket.Added addTo(Page<?> page) {
                 page.addToScript(
                         keepAliveHandle.declare(_null),
                         sendKeepAlive.declare(keepAliveHandle.set(

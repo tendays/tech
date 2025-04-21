@@ -2,11 +2,14 @@ package org.gamboni.tech.history;
 
 import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Multimap;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 import org.gamboni.tech.history.event.Event;
-import org.gamboni.tech.history.event.JsStampedEventList;
+import org.gamboni.tech.history.event.StampedEventListValues;
+import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.js.JsPersistentWebSocket;
 import org.gamboni.tech.web.js.JsType;
-import org.gamboni.tech.web.ui.AbstractPage;
+import org.gamboni.tech.web.ui.Page;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -17,6 +20,7 @@ import java.util.function.Function;
 
 import static org.gamboni.tech.web.js.JavaScript.*;
 
+@RequiredArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract class ClientStateHandler implements JsPersistentWebSocket.Handler {
     public interface MatchCallback {
         void expect(JsExpression toBeTruthy);
@@ -40,12 +44,14 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
      * Latest sequence number obtained from server.
      */
     private final JsGlobal stamp = new JsGlobal("stamp");
+    public static final Symbol EVENT_SYMBOL = Symbol.create();
 
-    private final List<EventHandler<?>> handlers = new ArrayList<>();
+    Multimap<Set<ConditionKey>, JsFragment> evaluatedHandlers = LinkedHashMultimap.create();
+    //private final List<EventHandler<?>> handlers = new ArrayList<>();
 
     public <E> ClientStateHandler addHandler(BiFunction<JsExpression, MatchCallback, E> matcher,
                                              Function<E, JsFragment> handler) {
-        this.handlers.add(new EventHandler<>(matcher, handler));
+        addHandlerToMultimap(new EventHandler<>(matcher, handler), evaluatedHandlers);
         return this;
     }
 
@@ -65,14 +71,8 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
     }
 
     private JsStatement applyUpdate(JsExpression event) {
-        // do a single [else]if block for all handlers sharing the same condition
-        Multimap<Set<ConditionKey>, JsFragment> evaluatedHandlers = LinkedHashMultimap.create();
-
-        for (var h : handlers) {
-            addHandlerToMultimap(h, event, evaluatedHandlers);
-        }
-
-        return evaluatedHandlers.asMap()
+        return EVENT_SYMBOL.assignIn(event, JavaScript.dynamicStatement(() ->
+                evaluatedHandlers.asMap()
                 .entrySet()
                 .stream()
                 .reduce(EMPTY_IF_CHAIN,
@@ -90,10 +90,10 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
                                                 .collect(toSeq())),
                         (__, ___) -> {
                             throw new IllegalStateException("Unnecessary in sequential streams");
-                        });
+                        })));
     }
 
-    private <E> void addHandlerToMultimap(EventHandler<E> handler, JsExpression event, Multimap<Set<ConditionKey>, JsFragment> evaluatedHandlers) {
+    private <E> void addHandlerToMultimap(EventHandler<E> handler, Multimap<Set<ConditionKey>, JsFragment> evaluatedHandlers) {
         class MatchCallbackImpl implements MatchCallback {
             final Set<ConditionKey> conditions = new LinkedHashSet<>();
             final List<Integer> toExpand = new ArrayList<>();
@@ -102,7 +102,7 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
              */
             int branchIndex = 0;
             boolean incrementing = true;
-            boolean lastRun = true;
+            boolean lastRun = false;
 
             @Override
             public void expect(JsExpression cond) {
@@ -136,21 +136,22 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
                         // found a non-maximal digit
                         toExpand.set(branchIndex, nextDigitValue);
                         incrementing = false;
-
-                        if (nextDigitValue + 1 < possibilities.length) {
-                            // when generating at least one non-maximal digit we can run again.
-                            // NOTE: not using equality in test because need to account for possibility
-                            // that the event handler code is non-deterministic, so this is a best-effort
-                            // to avoid "undefined behaviour" to mean "infinite loops"
-                            lastRun = false;
-                        }
                     } else {
                         // maximal digit
                         toExpand.set(branchIndex, 0);
                         // and keep incrementing
                     }
                 }
-                T result = possibilities[toExpand.get(branchIndex)];
+
+                int thisDigit = toExpand.get(branchIndex);
+                if (thisDigit + 1 < possibilities.length) {
+                    // when generating at least one non-maximal digit we can run again.
+                    // NOTE: not using equality in test because need to account for possibility
+                    // that the event handler code is non-deterministic, so this is a best-effort
+                    // to avoid "undefined behaviour" to mean "infinite loops"
+                    lastRun = false;
+                }
+                T result = possibilities[thisDigit];
                 branchIndex++;
                 return expectSameType(result);
             }
@@ -159,8 +160,13 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
         var matchCallback = new MatchCallbackImpl();
 
         while (!matchCallback.lastRun) {
-            var wrappedEvent = handler.matcher.apply(event, matchCallback);
-            evaluatedHandlers.put(matchCallback.conditions, handler.handler.apply(wrappedEvent));
+            matchCallback.lastRun = true;
+            matchCallback.branchIndex = 0;
+            matchCallback.incrementing = true;
+            matchCallback.conditions.clear();
+
+            var wrappedEvent = handler.matcher.apply(EVENT_SYMBOL, matchCallback);
+            evaluatedHandlers.put(Set.copyOf(matchCallback.conditions), handler.handler.apply(wrappedEvent));
         }
     }
 
@@ -168,10 +174,10 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
 
 
     @Override
-    public JsStatement handleEvent(JsExpression message) {
+    public JsStatement handleEvent(JsExpression event) {
         return let(
-                new JsStampedEventList(message),
-                JsStampedEventList::new,
+                StampedEventListValues.of(event),
+                StampedEventListValues::of,
                 stampedEventList -> seq(
                         stamp.set(stampedEventList.stamp()),
                         _forOf(stampedEventList.updates(),
@@ -185,7 +191,7 @@ public abstract class ClientStateHandler implements JsPersistentWebSocket.Handle
     }
 
     @Override
-    public ClientStateHandler addTo(AbstractPage<?> page) {
+    public ClientStateHandler addTo(Page<?> page) {
         page.addToScript(stamp.declare(0)); // initialised by init()
         return this;
     }

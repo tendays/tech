@@ -1,6 +1,7 @@
 package org.gamboni.tech.web.ui;
 
 import org.gamboni.tech.web.js.JavaScript;
+import org.gamboni.tech.web.ui.value.StringValue;
 
 /** An {@link org.gamboni.tech.web.ui.ElementRenderer} which includes an {@code id} property
  * in rendered elements. The id is obtained by concatenating a fixed string (which can be
@@ -21,8 +22,8 @@ public interface IdentifiedElementRenderer<T> extends ElementRenderer<T> {
      *
      * @return an expression holding the id extracted from the element.
      */
-    default JavaScript.JsString getIdFromElement(JavaScript.JsHtmlElement elt) {
-        return elt.id().substring(getElementKey().length()+1);
+    default StringValue getIdFromElement(JavaScript.JsHtmlElement elt) {
+        return StringValue.of(elt.id()).substring(getElementKey().length()+1);
     }
 
     static <T> IdentifiedElementRenderer<T> of(String elementKey, ElementRenderer<T> renderer) {

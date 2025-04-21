@@ -20,41 +20,42 @@ import static org.gamboni.tech.web.js.JavaScript.seq;
 public abstract class AbstractPage<T> extends AbstractComponent implements Renderer<T>, Page<T> {
     private final Script script;
 
-    public final JavaScript.Scope globals = new JavaScript.Scope();
+    public final JavaScript.Scope globals = JavaScript.Scope.empty();
 
     /** Many ids are actually concatenated with the id of an object. In this case this
      * scope will only contain the fixed part.
      */
-    private final JavaScript.Scope elementIds = new JavaScript.Scope();
+    private final JavaScript.Scope elementIds = JavaScript.Scope.empty();
 
     private final JavaScript.FunN onLoad = new JavaScript.FunN("onLoad");
-    private final Map<String, Function<T, JavaScript.JsExpression>> onLoadParameters = new HashMap<>();
+    private final Map<JavaScript.JsExpression, Function<T, JavaScript.JsExpression>> onLoadParameters = new HashMap<>();
     private final List<JavaScript.JsFragment> loadBody = new ArrayList<>();
+
+    protected AbstractPage(Script script) {
+        this.script = script;
+    }
 
     @Override
     public String freshElementId(String base) {
         return elementIds.freshVariableName(base);
     }
 
-    public interface OnLoad<T> {
-        JavaScript.JsExpression addParameter(Function<T, JavaScript.JsExpression> value);
-
+    @Override
+    public String freshGlobal(String base) {
+        return elementIds.freshVariableName(base);
     }
 
+    @Override
     public void addToOnLoad(Function<OnLoad<T>, JavaScript.JsFragment> code) {
         if (loadBody.isEmpty()) {
             // first time we add something to onLoad, we generate the function declaration
-            addToScript(onLoad.declare(__ -> seq(loadBody)));
+            addToScript(onLoad.declare(() -> seq(loadBody)));
         }
         loadBody.add(code.apply(paramValue -> {
             var paramName = onLoad.addParameter();
             onLoadParameters.put(paramName, paramValue);
-            return JavaScript.JsExpression.of(paramName);
+            return paramName;
         }));
-    }
-
-    protected AbstractPage(Script script) {
-        this.script = script;
     }
 
     /** Set the base path of this page. It is currently used to construct the script url. */
@@ -77,15 +78,27 @@ public abstract class AbstractPage<T> extends AbstractComponent implements Rende
 
         var html = new HtmlElement(actualDependencies, body, ImmutableList.of());
 
-        if (loadBody.isEmpty()) {
+        List<JavaScript.JsFragment> onloadAttribute = new ArrayList<>();
+
+        if (loadBody.size() > 0) {
+            onloadAttribute.add(onLoad.invoke(Maps.transformValues(onLoadParameters,
+                    fun -> fun.apply(data))));
+        }
+
+        for (var h : html) {
+            if (h instanceof Element e) {
+                e.getOnload().forEach(onloadAttribute::add);
+            }
+        }
+
+        if (onloadAttribute.isEmpty()) {
             return html;
         } else {
-            return html
-                    .onLoad(onLoad.invoke(Maps.transformValues(onLoadParameters,
-                            fun -> fun.apply(data))));
+            return html.onLoad(seq(onloadAttribute));
         }
     }
 
+    @Override
     public void addToScript(ScriptMember... members) {
         for (var member : members) {
             script.add(member);
@@ -114,6 +127,7 @@ public abstract class AbstractPage<T> extends AbstractComponent implements Rende
         }
 
         public HtmlElement onLoad(JavaScript.JsFragment code) {
+            // TODO this rebuilds the three elements (see constructor), we should probably reuse the bits that don't change
             return new HtmlElement(dependencies, body, ImmutableList.<Attribute>builder()
             .addAll(bodyAttributes)
             .add(Html.attribute("onload", code))

@@ -29,9 +29,9 @@ public class PrecedenceTest {
         assertFormat("2-3-4", TWO.minus(THREE).minus(FOUR));
 
         assertFormat("('2'+'3').substring(4)",
-                literal("2").plus("3").substring(4));
+                literal("2").plus("3").invoke("substring", literal(4)));
 
-        assertFormat("'hello'.substring(2)", literal("hello").substring(2));
+        assertFormat("'hello'.substring(2)", literal("hello").invoke("substring", literal(2)));
     }
 
     @Test

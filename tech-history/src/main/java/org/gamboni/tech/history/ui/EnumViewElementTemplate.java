@@ -4,11 +4,20 @@ import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Multimap;
 import lombok.RequiredArgsConstructor;
 import org.gamboni.tech.history.ClientStateHandler;
-import org.gamboni.tech.history.event.JsNewStateEvent;
 import org.gamboni.tech.history.event.NewStateEvent;
+import org.gamboni.tech.history.event.NewStateEventValues;
 import org.gamboni.tech.web.js.JavaScript;
-import org.gamboni.tech.web.ui.*;
+import org.gamboni.tech.web.ui.AbstractPage;
+import org.gamboni.tech.web.ui.Css;
+import org.gamboni.tech.web.ui.Element;
+import org.gamboni.tech.web.ui.ElementRenderer;
+import org.gamboni.tech.web.ui.Html;
 import org.gamboni.tech.web.ui.Html.Attribute;
+import org.gamboni.tech.web.ui.HtmlFragment;
+import org.gamboni.tech.web.ui.IdentifiedElementRenderer;
+import org.gamboni.tech.web.ui.Renderer;
+import org.gamboni.tech.web.ui.value.StringValue;
+import org.gamboni.tech.web.ui.value.Value;
 
 import java.util.Collection;
 import java.util.List;
@@ -20,7 +29,15 @@ import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toMap;
 import static lombok.AccessLevel.PRIVATE;
-import static org.gamboni.tech.web.js.JavaScript.*;
+import static org.gamboni.tech.web.js.JavaScript.EMPTY_IF_CHAIN;
+import static org.gamboni.tech.web.js.JavaScript.JsExpression;
+import static org.gamboni.tech.web.js.JavaScript.JsHtmlElement;
+import static org.gamboni.tech.web.js.JavaScript.JsStatement;
+import static org.gamboni.tech.web.js.JavaScript.getElementById;
+import static org.gamboni.tech.web.js.JavaScript.let;
+import static org.gamboni.tech.web.js.JavaScript.literal;
+import static org.gamboni.tech.web.js.JavaScript.seq;
+import static org.gamboni.tech.web.js.JavaScript.toSeq;
 import static org.gamboni.tech.web.ui.Html.escape;
 
 /** A self-updating element displaying the state of an entity, represented by an enum type.
@@ -135,7 +152,7 @@ public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPag
                     .entrySet()
                     .stream()
                     .reduce(EMPTY_IF_CHAIN,
-                            (chain, entry) -> chain._elseIf(isOneOf(value.toExpression(), entry.getValue()),
+                            (chain, entry) -> chain._elseIf(isOneOf(value, entry.getValue()),
                                     /* Remove other classes */
                                     cases.keySet()
                                             .stream()
@@ -176,9 +193,9 @@ public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPag
 
         private static BiFunction<JsExpression, ClientStateHandler.MatchCallback, EventData> defaultEventMatcher(String eventKey) {
         return (event, callback) -> {
-            var wrapped = callback.expectSameType(new JsNewStateEvent(event));
+            var wrapped = callback.expectSameType(NewStateEventValues.of(event));
             callback.expect(wrapped.key().eq(literal(eventKey)));
-            return new EventData(wrapped.id(), wrapped.newState());
+            return new EventData(wrapped.id(), Value.of(wrapped.newState()));
         };
     }
 
@@ -234,7 +251,7 @@ public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPag
                 elementKey, base, style);
     }
 
-    public record EventData(JsExpression id, JsExpression state) {}
+    public record EventData(JsExpression id, Value<? extends Enum<?>> state) {}
 
     /**
      * @param eventMatcher a replacement matcher flagging events this template should react to.
@@ -281,10 +298,10 @@ public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPag
      * @return this, for chaining
      */
     public EnumViewElementTemplate<D, E> withContents(Function<E, String> renderer) {
-        Map<E, JsString> formats = Stream.of(enumType.getEnumConstants())
+        Map<E, StringValue> formats = Stream.of(enumType.getEnumConstants())
                 .collect(toMap(
                         e -> e,
-                        e -> literal(renderer.apply(e))
+                        e -> StringValue.of(renderer.apply(e))
                 ));
         return this.withContents(new DynamicContent<E>() {
             @Override
@@ -294,15 +311,23 @@ public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPag
 
             @Override
             public JsStatement update(JsHtmlElement elt, Value<E> value, Class<E> enumType) {
-                return formats.entrySet()
-                        .stream()
-                        .reduce(EMPTY_IF_CHAIN,
-                                (chain, entry) ->
-                                chain._elseIf(value.toExpression().eq(entry.getKey()),
-                                        elt.setInnerText(entry.getValue())),
-                                (__, ___) -> {
-                            throw new UnsupportedOperationException();
-                                });
+                return
+                        // if 'value' is constant: directly set the corresponding text
+                        value.constantValue().map(constantValue ->
+                                        Optional.ofNullable(formats.get(constantValue))
+                                                .map(elt::setInnerText)
+                                                .orElse(seq()))
+                                // if 'value' is not constant, generate an if-else-if chain
+                                .orElseGet(() ->
+                                        formats.entrySet()
+                                                .stream()
+                                                .reduce(EMPTY_IF_CHAIN,
+                                                        (chain, entry) ->
+                                                                chain._elseIf(value.eq(entry.getKey()),
+                                                                        elt.setInnerText(entry.getValue())),
+                                                        (__, ___) -> {
+                                                            throw new UnsupportedOperationException();
+                                                        }));
             }
         });
     }
@@ -330,7 +355,7 @@ public class EnumViewElementTemplate<D, E extends Enum<E>> implements DynamicPag
         /* Create a renderer */
         return IdentifiedElementRenderer.of(elementKey, value -> {
             Value<E> enumValue = getState.apply(value);
-            Value<String> eltId = Value.concat(Value.of(idPrefix), getId.apply(value));
+            Value<String> eltId = Value.of(idPrefix).plus(getId.apply(value));
             Element withNewAttributes =
                     ID_ATTRIBUTE.apply(
                     style.apply(

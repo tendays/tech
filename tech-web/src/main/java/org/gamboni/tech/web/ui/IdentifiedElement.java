@@ -1,6 +1,7 @@
 package org.gamboni.tech.web.ui;
 
 import com.google.common.collect.Iterables;
+import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.js.JavaScript.JsHtmlElement;
 
 import java.util.List;
@@ -12,9 +13,12 @@ public class IdentifiedElement extends Element {
 
     public final String id;
 
-    IdentifiedElement(String id, String name, Iterable<? extends Attribute> attributes, Iterable<? extends HtmlFragment> contents) {
+    IdentifiedElement(String id, String name, Iterable<? extends Attribute> attributes,
+                      Iterable<? extends Html> contents,
+                      Iterable<? extends JavaScript.JsFragment> onload) {
         super(name, Iterables.concat(
-                List.of(Html.attribute("id", id)), attributes), contents);
+                List.of(Html.attribute("id", id)), attributes), contents,
+                onload);
         this.id = id;
     }
 

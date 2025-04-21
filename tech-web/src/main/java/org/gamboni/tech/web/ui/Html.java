@@ -4,12 +4,16 @@ import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.js.JavaScript.JsExpression;
 import org.gamboni.tech.web.js.JavaScript.JsHtmlElement;
 import org.gamboni.tech.web.js.JavaScript.JsStatement;
+import org.gamboni.tech.web.ui.value.StringValue;
+import org.gamboni.tech.web.ui.value.Value;
 
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
 
+import static org.gamboni.tech.web.js.JavaScript.lambda;
 import static org.gamboni.tech.web.js.JavaScript.literal;
+import static org.gamboni.tech.web.js.JavaScript.seq;
 
 /**
  * @author tendays
@@ -21,7 +25,7 @@ public interface Html extends HtmlFragment {
         private EmptyHtml() {}
         @Override
         public JsStatement javascriptCreate(Function<JsHtmlElement, ? extends JavaScript.JsFragment> continuation) {
-            return s -> "";
+            return seq();
         }
 
         public String toString() { return ""; }
@@ -46,7 +50,7 @@ public interface Html extends HtmlFragment {
         };
     }
 
-    static Html escape(Value<String> text) {
+    static Html escape(StringValue text) {
         return new Html() {
             @Override
             public JsStatement javascriptCreate(Function<JsHtmlElement, ? extends JavaScript.JsFragment> continuation) {
@@ -111,7 +115,7 @@ public interface Html extends HtmlFragment {
 
             @Override
             public String render() {
-                String text = getAttributeValue().toExpression().format(JavaScript.Scope.NO_DECLARATION);
+                String text = getAttributeValue().format(JavaScript.Scope.NO_DECLARATION);
                 return getAttributeName() +"=\""+ text
                         .replace("&", "&amp;")
                         .replace("\"", "&quot;")
@@ -120,7 +124,7 @@ public interface Html extends HtmlFragment {
 
             @Override
             public JsStatement javascriptCreate(JsExpression elt) {
-                return elt.dot(name).set(s -> "() => " + handler.apply(elt).format(s));
+                return elt.dot(name).set(lambda(handler.apply(elt)));
             }
         };
     }
@@ -153,7 +157,7 @@ public interface Html extends HtmlFragment {
         default JsStatement javascriptCreate(JsExpression elt) {
                 return JsStatement.of(
                         elt.invoke("setAttribute",
-                                literal(getAttributeName()), getAttributeValue().toExpression()));
+                                literal(getAttributeName()), getAttributeValue()));
         }
 
         default String render() {

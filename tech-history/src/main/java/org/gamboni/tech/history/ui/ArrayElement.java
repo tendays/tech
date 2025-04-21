@@ -2,10 +2,10 @@ package org.gamboni.tech.history.ui;
 
 import lombok.RequiredArgsConstructor;
 import org.gamboni.tech.history.ClientStateHandler;
-import org.gamboni.tech.history.event.ElementRemovedEvent;
-import org.gamboni.tech.history.event.JsElementRemovedEvent;
+import org.gamboni.tech.history.event.ElementRemovedEventValues;
 import org.gamboni.tech.web.js.JavaScript;
 import org.gamboni.tech.web.ui.*;
+import org.gamboni.tech.web.ui.value.Value;
 
 import java.util.List;
 import java.util.Optional;
@@ -36,8 +36,8 @@ public static <T> ArrayElement<T> withRemoval(Function<T, Value<String>> getId, 
         return new ArrayElement<T>("", DEFAULT_ELEMENT_KEY,
                 idPrefix -> item -> renderer.render(item)
                         .plusAttribute(attribute("id",
-                                Value.concat(Value.of(idPrefix +"-"),
-                                        getId.apply(item)))),
+                                Value.of(idPrefix +"-")
+                                        .plus(getId.apply(item)))),
                 true);
     }
 
@@ -90,8 +90,7 @@ public static <T> ArrayElement<T> withRemoval(Function<T, Value<String>> getId, 
                                         // If there's an 'id' attribute,
                                         // only create an element if there wasn't already one with the same id
                                         idAttribute.<JsStatement>map(id -> _if(getElementById(id
-                                                .getAttributeValue()
-                                                .toExpression())
+                                                .getAttributeValue())
                                                 .not(),
                                         createElement))
                                                 // If no 'id' attribute, we were created with 'addOnly' and don't detect duplicates
@@ -110,9 +109,10 @@ public static <T> ArrayElement<T> withRemoval(Function<T, Value<String>> getId, 
 
         if (supportsRemoval) {
             page.addHandler((event, callback) -> {
-                callback.expect(event.dot("@type").eq(literal(ElementRemovedEvent.class.getSimpleName())));
+                ElementRemovedEventValues asElementRemoved = ElementRemovedEventValues.of(event);
+                callback.expect(asElementRemoved.isThisType());
                 callback.expect(event.dot("key").eq(literal(this.eventKey)));
-                return new JsElementRemovedEvent(event);
+                return asElementRemoved;
             }, event -> let(getElementById(literal(idPrefix + "-").plus(event.id())),
                     JavaScript.JsHtmlElement::new,
                     existing -> _if(existing, existing.remove())));
